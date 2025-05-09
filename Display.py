@@ -2,53 +2,42 @@ import streamlit as st
 import geopandas as gpd
 import pandas as pd
 import requests
+import folium
+from streamlit_folium import st_folium
 
 # Define the GeoJSON URL directly in the code
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 
-def display_geojson_area(geojson_url):
-    """Displays the area defined in a GeoJSON file from a URL as a closed loop."""
+def display_geojson_area_folium(geojson_url):
+    """Displays the area defined in a GeoJSON file from a URL as a filled polygon using Folium."""
     try:
         response = requests.get(geojson_url)
         response.raise_for_status()
         gdf = gpd.read_file(geojson_url)
 
         if not gdf.empty and 'geometry' in gdf.columns:
-            st.subheader("Sharaan Protected Area")
+            st.subheader("Sharaan Protected Area (Folium)")
 
             for geom in gdf.geometry:
                 if geom.geom_type == 'Polygon':
-                    exterior_coords = list(geom.exterior.coords)
-                    # Create a DataFrame for the polygon boundary
-                    df_polygon = pd.DataFrame(exterior_coords, columns=['lon', 'lat'])
+                    # Folium expects coordinates in [latitude, longitude] order
+                    polygon_coords_folium = [[lat, lon] for lon, lat in list(geom.exterior.coords)]
+                    m = folium.Map(location=[polygon_coords_folium[0][0], polygon_coords_folium[0][1]], zoom_start=10) # Initial view
 
-                    # Calculate the bounding box for centering
-                    min_lat = df_polygon['lat'].min()
-                    max_lat = df_polygon['lat'].max()
-                    min_lon = df_polygon['lon'].min()
-                    max_lon = df_polygon['lon'].max()
-                    center_lat = (min_lat + max_lat) / 2
-                    center_lon = (min_lon + max_lon) / 2
+                    folium.Polygon(locations=polygon_coords_folium, color="red", fill=True, fill_color="purple", fill_opacity=0.4).add_to(m)
 
-                    # Display the map with the polygon boundary
-                    st.map(df_polygon, latitude=center_lat, longitude=center_lon)
-                    return  # Assuming only one main polygon
+                    st_folium(m, width=700, height=500)
+                    return
 
                 elif geom.geom_type == 'MultiPolygon':
                     for polygon in geom.geoms:
-                        exterior_coords = list(polygon.exterior.coords)
-                        df_polygon = pd.DataFrame(exterior_coords, columns=['lon', 'lat'])
+                        polygon_coords_folium = [[lat, lon] for lon, lat in list(polygon.exterior.coords)]
+                        m = folium.Map(location=[polygon_coords_folium[0][0], polygon_coords_folium[0][1]], zoom_start=10)
 
-                        # Calculate bounding box (you might need to adjust for multi-polygons)
-                        min_lat = df_polygon['lat'].min()
-                        max_lat = df_polygon['lat'].max()
-                        min_lon = df_polygon['lon'].min()
-                        max_lon = df_polygon['lon'].max()
-                        center_lat = (min_lat + max_lat) / 2
-                        center_lon = (min_lon + max_lon) / 2
+                        folium.Polygon(locations=polygon_coords_folium, color="red", fill=True, fill_color="purple", fill_opacity=0.4).add_to(m)
 
-                        st.map(df_polygon, latitude=center_lat, longitude=center_lon)
-                        return  # Assuming only one main multi-polygon
+                        st_folium(m, width=700, height=500)
+                        return
 
             st.warning("No Polygon or MultiPolygon geometry found in the GeoJSON data.")
         else:
@@ -62,4 +51,4 @@ def display_geojson_area(geojson_url):
 
 st.title("Sharaan Protected Area")
 
-display_geojson_area(geojson_url)
+display_geojson_area_folium(geojson_url)
