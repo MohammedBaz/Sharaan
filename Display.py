@@ -1,14 +1,15 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import requests
 import folium
 from streamlit_folium import st_folium
 import matplotlib.pyplot as plt
 import seaborn as sns
-import json
-import requests
 import geopandas as gpd
 from folium.plugins import HeatMap
+from shapely.geometry import Polygon
+import random
 
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
@@ -34,27 +35,50 @@ def generate_random_time_series(variable, n_points=100):
         data = np.random.rand(n_points)
     return pd.DataFrame({'Time': time, variable: data})
 
+def generate_random_points_in_polygon(polygon, num_points=10):
+    """Generates random points within a Shapely polygon."""
+    minx, miny, maxx, maxy = polygon.bounds
+    points = []
+    while len(points) < num_points:
+        point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
+        if polygon.contains(point):
+            points.append((point.y, point.x))  # Folium expects [lat, lon]
+    return points
+
 @st.cache_data
-def generate_random_spatial_data_heatmap(geojson, variable):
-    """Generates random spatial data for heatmap based on GeoJSON features."""
+def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=10):
+    """Generates random spatial data for heatmap covering the GeoJSON features."""
     features = geojson['features']
     heatmap_data = []
-    for feature in features:
-        if feature['geometry']['type'] == 'Polygon':
-            coords = feature['geometry']['coordinates'][0]
-            lats = [coord[1] for coord in coords]
-            lons = [coord[0] for coord in coords]
-            center_lat = sum(lats) / len(lats)
-            center_lon = sum(lons) / len(lons)
-            if variable == 'Temperature':
-                intensity = np.random.uniform(0.5, 1.0)
-            elif variable == 'Precipitation':
-                intensity = np.random.uniform(0.2, 0.8)
-            elif variable == 'Wind Speed':
-                intensity = np.random.uniform(0.4, 0.9)
-            else:
-                intensity = np.random.rand()
-            heatmap_data.append([center_lat, center_lon, intensity])
+    gdf = gpd.read_file(geojson_url)  # Load GeoDataFrame for Shapely geometries
+
+    for index, feature in gdf.iterrows():
+        if feature.geometry.geom_type == 'Polygon':
+            polygon = feature.geometry
+            random_points = generate_random_points_in_polygon(polygon, num_points_per_polygon)
+            for lat, lon in random_points:
+                if variable == 'Temperature':
+                    intensity = np.random.uniform(0.5, 1.0)
+                elif variable == 'Precipitation':
+                    intensity = np.random.uniform(0.2, 0.8)
+                elif variable == 'Wind Speed':
+                    intensity = np.random.uniform(0.4, 0.9)
+                else:
+                    intensity = np.random.rand()
+                heatmap_data.append([lat, lon, intensity])
+        elif feature.geometry.geom_type == 'MultiPolygon':
+            for polygon in feature.geometry.geoms:
+                random_points = generate_random_points_in_polygon(polygon, num_points_per_polygon)
+                for lat, lon in random_points:
+                    if variable == 'Temperature':
+                        intensity = np.random.uniform(0.5, 1.0)
+                    elif variable == 'Precipitation':
+                        intensity = np.random.uniform(0.2, 0.8)
+                    elif variable == 'Wind Speed':
+                        intensity = np.random.uniform(0.4, 0.9)
+                    else:
+                        intensity = np.random.rand()
+                    heatmap_data.append([lat, lon, intensity])
     return heatmap_data
 
 # Load GeoJSON data
@@ -68,7 +92,7 @@ selected_variable = st.sidebar.selectbox("Choose a climate variable", ['Temperat
 
 # Generate random data
 time_series_data = generate_random_time_series(selected_variable)
-heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable)
+heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=50) # Increase the number of points
 
 # --- Time Series Plot ---
 st.subheader(f"{selected_variable} Time Series")
