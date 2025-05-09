@@ -66,7 +66,7 @@ else:
 st.subheader("Spatial Data (First 5 Rows)")
 @st.cache_data
 def generate_random_spatial_data_for_debug(geojson, variable):
-    # Your existing generate_random_spatial_data function
+    """Generates random spatial data based on GeoJSON features."""
     features = geojson['features']
     spatial_data = []
     for i, feature in enumerate(features):
@@ -84,13 +84,13 @@ def generate_random_spatial_data_for_debug(geojson, variable):
     return pd.DataFrame(spatial_data)
 
 if sharaan_geojson_debug:
-    debug_spatial_data = generate_random_spatial_data(sharaan_geojson_debug, st.sidebar.selectbox("Debug Variable", ['Temperature', 'Precipitation', 'Wind Speed']))
+    debug_spatial_data = generate_random_spatial_data_for_debug(sharaan_geojson_debug, st.sidebar.selectbox("Debug Variable", ['Temperature', 'Precipitation', 'Wind Speed']))
     st.write(f"First 5 Rows of Spatial Data: {debug_spatial_data.head()}")
 
 st.subheader("Heatmap Data (First 5 Rows)")
 @st.cache_data
 def generate_random_spatial_data_heatmap_for_debug(geojson, variable):
-    # Your existing generate_random_spatial_data_heatmap function
+    """Generates random spatial data for heatmap based on GeoJSON features."""
     features = geojson['features']
     heatmap_data = []
     for feature in features:
@@ -112,7 +112,7 @@ def generate_random_spatial_data_heatmap_for_debug(geojson, variable):
     return heatmap_data
 
 if sharaan_geojson_debug:
-    debug_heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson_debug, st.sidebar.selectbox("Debug Heatmap Variable", ['Temperature', 'Precipitation', 'Wind Speed']))
+    debug_heatmap_data = generate_random_spatial_data_heatmap_for_debug(sharaan_geojson_debug, st.sidebar.selectbox("Debug Heatmap Variable", ['Temperature', 'Precipitation', 'Wind Speed']))
     if debug_heatmap_data:
         st.write(f"First 5 Rows of Heatmap Data: {debug_heatmap_data[:5]}")
     else:
