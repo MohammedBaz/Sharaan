@@ -10,7 +10,7 @@ import geopandas as gpd
 from folium.plugins import HeatMap
 from shapely.geometry import Polygon
 import random
-
+from shapely.geometry import Polygon, Point
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 
