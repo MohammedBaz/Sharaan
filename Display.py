@@ -1,13 +1,12 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import folium
-from streamlit_folium import st_folium
+import requests
 import matplotlib.pyplot as plt
 import seaborn as sns
 import json
-import requests
 import geopandas as gpd
+from map_utils import render_sharaan_map, display_folium_map
 
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
@@ -40,7 +39,6 @@ def generate_random_spatial_data(geojson, variable):
     spatial_data = []
     for i, feature in enumerate(features):
         if feature['geometry']['type'] == 'Polygon':
-            # Use the first coordinate as a representative point (can be improved)
             lon, lat = feature['geometry']['coordinates'][0][0][0], feature['geometry']['coordinates'][0][0][1]
             if variable == 'Temperature':
                 value = np.random.uniform(15, 30)
@@ -77,34 +75,8 @@ st.pyplot(fig_ts)
 # --- Heatmap on Map ---
 st.subheader(f"{selected_variable} Heatmap")
 
-# Calculate the center of the Sharaan area for the initial map view
-gdf = gpd.read_file(geojson_url)
-if not gdf.empty:
-    bounds = gdf.total_bounds
-    center_lat = (bounds[1] + bounds[3]) / 2
-    center_lon = (bounds[0] + bounds[2]) / 2
-else:
-    center_lat, center_lon = 26.9, 37.8  # Default if GeoJSON fails to load
+# Render the Folium map using the function from map_utils.py
+folium_map = render_sharaan_map(sharaan_geojson, spatial_data)
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
-
-# Create a GeoJSON layer for the Sharaan boundary
-folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
-    'fillColor': 'purple',
-    'color': 'red',
-    'weight': 2,
-    'fillOpacity': 0.2
-}).add_to(m)
-
-# Add heatmap layer (using a simple approach for now)
-for index, row in spatial_data.iterrows():
-    folium.CircleMarker(
-        location=[row['latitude'], row['longitude']],
-        radius=row['value'] * 2 if selected_variable != 'Precipitation' else row['value'] * 5, # Adjust radius based on variable
-        color='red',
-        fill=True,
-        fill_color='orangered',
-        fill_opacity=0.6
-    ).add_to(m)
-
-st_folium(m, width=700, height=500)
+# Display the Folium map using the function from map_utils.py
+display_folium_map(folium_map)
