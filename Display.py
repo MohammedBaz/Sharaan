@@ -1,36 +1,23 @@
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
-from zipfile import ZipFile
-import os
-import tempfile
+import requests
 
-def kmz_to_geojson(kmz_file):
-    """Converts a KMZ file to a GeoJSON string."""
-    temp_dir = tempfile.TemporaryDirectory()
+def display_geojson_from_url(geojson_url):
+    """Displays the area defined in a GeoJSON file from a URL."""
     try:
-        with ZipFile(kmz_file, 'r') as kmz:
-            kml_file = [f for f in kmz.namelist() if f.lower().endswith('.kml')][0]
-            kmz.extract(kml_file, temp_dir.name)
-            kml_path = os.path.join(temp_dir.name, kml_file)
-            gdf = gpd.read_file(kml_path)
-            geojson_str = gdf.to_json()
-            return geojson_str
-    finally:
-        temp_dir.cleanup()
+        response = requests.get(geojson_url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+        geojson_data = response.json()
+        gdf = gpd.read_file(geojson_url)  # geopandas can directly read from a URL
 
-def display_kmz_area(kmz_file):
-    """Displays the area defined in a KMZ file on a Streamlit map."""
-    geojson_data = kmz_to_geojson(kmz_file)
-    if geojson_data:
-        gdf = gpd.read_file(geojson_data)
         if not gdf.empty and 'geometry' in gdf.columns:
+            st.subheader("Area from GeoJSON URL")
             # Extract centroid to center the map
             centroid = gdf.geometry.unary_union.centroid
             st.map(pd.DataFrame({'lat': [centroid.y], 'lon': [centroid.x]}))
 
-            # You might want to display the boundaries as well.
-            # For polygons, you can extract the exterior coordinates.
+            # Display the boundaries
             polygon_coords = []
             for geom in gdf.geometry:
                 if geom.geom_type == 'Polygon':
@@ -43,13 +30,19 @@ def display_kmz_area(kmz_file):
                 df_polygon = pd.DataFrame(polygon_coords, columns=['lon', 'lat'])
                 st.map(df_polygon)
         else:
-            st.warning("No valid geometry data found in the KMZ file.")
-    else:
-        st.error("Could not process the KMZ file.")
+            st.warning("No valid geometry data found in the GeoJSON URL.")
+    except requests.exceptions.RequestException as e:
+        st.error(f"Error fetching GeoJSON from URL: {e}")
+    except ValueError:
+        st.error("Invalid JSON format at the provided URL.")
+    except fiona.errors.DriverError:
+        st.error("Error reading geospatial data from the URL. Ensure it's a valid GeoJSON format.")
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {e}")
 
-st.title("Display Area from KMZ")
+st.title("Display Area from GeoJSON URL")
 
-uploaded_file = st.file_uploader("Upload a KMZ file", type=["kmz"])
+geojson_url = st.text_input("Enter the URL of your GeoJSON file on GitHub:")
 
-if uploaded_file is not None:
-    display_kmz_area(uploaded_file)
+if geojson_url:
+    display_geojson_from_url(geojson_url)
