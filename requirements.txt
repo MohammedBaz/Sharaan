@@ -3,3 +3,4 @@ fiona
 shapely
 pyproj
 pandas
+folium
