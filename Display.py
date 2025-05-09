@@ -3,33 +3,44 @@ import geopandas as gpd
 import pandas as pd
 import requests
 
-def display_geojson_from_url(geojson_url):
-    """Displays the area defined in a GeoJSON file from a URL with debugging."""
+# Define the GeoJSON URL directly in the code
+geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
+
+def display_geojson_area(geojson_url):
+    """Displays the area defined in a GeoJSON file from a URL, focusing the view."""
     try:
         response = requests.get(geojson_url)
         response.raise_for_status()
         gdf = gpd.read_file(geojson_url)
 
         if not gdf.empty and 'geometry' in gdf.columns:
-            st.subheader("Area from GeoJSON URL")
+            st.subheader("Sharaan Area")
 
-            for index, row in gdf.iterrows():
-                geometry = row['geometry']
-                if geometry.geom_type == 'Polygon':
-                    exterior_coords = list(geometry.exterior.coords)
-                    st.write("Polygon Coordinates (First 10):", exterior_coords[:10]) # Log first 10
-                    df_polygon = pd.DataFrame(exterior_coords, columns=['lon', 'lat'])
-                    st.map(df_polygon)
-                    return # Exit after processing the first polygon
-                elif geometry.geom_type == 'MultiPolygon':
-                    for polygon in geometry.geoms:
-                        exterior_coords = list(polygon.exterior.coords)
-                        st.write("MultiPolygon Coordinates (First 10 of first):", exterior_coords[:10]) # Log first 10
-                        df_polygon = pd.DataFrame(exterior_coords, columns=['lon', 'lat'])
-                        st.map(df_polygon)
-                        return # Exit after processing the first multi-polygon
+            polygon_coords = []
+            for geom in gdf.geometry:
+                if geom.geom_type == 'Polygon':
+                    polygon_coords.extend([list(coord) for coord in geom.exterior.coords])
+                elif geom.geom_type == 'MultiPolygon':
+                    for polygon in geom.geoms:
+                        polygon_coords.extend([list(coord) for coord in polygon.exterior.coords])
 
-            st.warning("No Polygon or MultiPolygon geometry found in the GeoJSON data.")
+            if polygon_coords:
+                df_polygon = pd.DataFrame(polygon_coords, columns=['lon', 'lat'])
+
+                # Calculate the bounding box of the polygon
+                min_lat = df_polygon['lat'].min()
+                max_lat = df_polygon['lat'].max()
+                min_lon = df_polygon['lon'].min()
+                max_lon = df_polygon['lon'].max()
+
+                # Calculate the center of the bounding box
+                center_lat = (min_lat + max_lat) / 2
+                center_lon = (min_lon + max_lon) / 2
+
+                # Display the map centered on the polygon
+                st.map(df_polygon, latitude=center_lat, longitude=center_lon)
+            else:
+                st.warning("No polygon coordinates found in the GeoJSON data.")
         else:
             st.warning("No valid geometry data found in the GeoJSON URL.")
     except requests.exceptions.RequestException as e:
@@ -39,10 +50,6 @@ def display_geojson_from_url(geojson_url):
     except Exception as e:
         st.error(f"An unexpected error occurred: {e}")
 
-st.title("Display Area from GeoJSON URL (Debugging)")
+st.title("Sharaan Protected Area")
 
-geojson_url = st.text_input("Enter the URL of your GeoJSON file on GitHub:",
-                            value="https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson")
-
-if geojson_url:
-    display_geojson_from_url(geojson_url)
+display_geojson_area(geojson_url)
