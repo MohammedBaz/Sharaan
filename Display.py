@@ -35,7 +35,7 @@ def generate_random_time_series(variable, n_points=100):
         data = np.random.rand(n_points)
     return pd.DataFrame({'Time': time, variable: data})
 
-def generate_random_points_in_polygon(polygon, num_points=500): # Increased num_points
+def generate_random_points_in_polygon(polygon, num_points=500):
     """Generates random points within a Shapely polygon."""
     minx, miny, maxx, maxy = polygon.bounds
     points = []
@@ -46,7 +46,7 @@ def generate_random_points_in_polygon(polygon, num_points=500): # Increased num_
     return points
 
 @st.cache_data
-def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=500): # Increased num_points here as well
+def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=500):
     """Generates random spatial data for heatmap covering the GeoJSON features."""
     features = geojson['features']
     heatmap_data = []
@@ -114,4 +114,22 @@ if not gdf.empty:
 else:
     center_lat, center_lon = 26.9, 37.8  # Default if GeoJSON fails to load
 
-m = folium.Map(location=[center_lat, center
+m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+
+# Create a GeoJSON layer for the Sharaan boundary
+folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
+    'fillColor': 'purple',
+    'color': 'red',
+    'weight': 2,
+    'fillOpacity': 0.2
+}).add_to(m)
+
+# Add Heatmap layer with adjusted parameters
+HeatMap(
+    data=heatmap_data,
+    radius=25,  # Increased radius for smoother effect
+    blur=20,    # Increased blur for smoother effect
+    gradient={0.4: 'blue', 0.6: 'green', 0.8: 'yellow', 1: 'red'}  # More professional color gradient
+).add_to(m)
+
+st_folium(m, width=700, height=500)
