@@ -8,9 +8,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
 from folium.plugins import HeatMap
-from shapely.geometry import Polygon
+from shapely.geometry import Point
 import random
-from shapely.geometry import Polygon, Point
+
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 
@@ -35,7 +35,7 @@ def generate_random_time_series(variable, n_points=100):
         data = np.random.rand(n_points)
     return pd.DataFrame({'Time': time, variable: data})
 
-def generate_random_points_in_polygon(polygon, num_points=10):
+def generate_random_points_in_polygon(polygon, num_points=500): # Increased num_points
     """Generates random points within a Shapely polygon."""
     minx, miny, maxx, maxy = polygon.bounds
     points = []
@@ -46,7 +46,7 @@ def generate_random_points_in_polygon(polygon, num_points=10):
     return points
 
 @st.cache_data
-def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=10):
+def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=500): # Increased num_points here as well
     """Generates random spatial data for heatmap covering the GeoJSON features."""
     features = geojson['features']
     heatmap_data = []
@@ -92,7 +92,7 @@ selected_variable = st.sidebar.selectbox("Choose a climate variable", ['Temperat
 
 # Generate random data
 time_series_data = generate_random_time_series(selected_variable)
-heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=50) # Increase the number of points
+heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=500)
 
 # --- Time Series Plot ---
 st.subheader(f"{selected_variable} Time Series")
@@ -114,17 +114,4 @@ if not gdf.empty:
 else:
     center_lat, center_lon = 26.9, 37.8  # Default if GeoJSON fails to load
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
-
-# Create a GeoJSON layer for the Sharaan boundary
-folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
-    'fillColor': 'purple',
-    'color': 'red',
-    'weight': 2,
-    'fillOpacity': 0.2
-}).add_to(m)
-
-# Add Heatmap layer
-HeatMap(heatmap_data).add_to(m)
-
-st_folium(m, width=700, height=500)
+m = folium.Map(location=[center_lat, center
