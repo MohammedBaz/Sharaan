@@ -5,3 +5,4 @@ pyproj
 pandas
 folium
 streamlit-folium
+matplotlib
