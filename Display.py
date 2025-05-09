@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import json
 import requests
+import geopandas as gpd
 
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
