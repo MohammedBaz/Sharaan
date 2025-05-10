@@ -26,13 +26,13 @@ def generate_random_time_series(variable, n_points=100):
     """Generates random time series data."""
     time = pd.to_datetime(pd.date_range(start='2024-01-01', periods=n_points))
     if variable == 'Temperature':
-        data = np.random.uniform(10, 35, n_points)
+        data = np.random.uniform(10, 35, n_points).tolist()
     elif variable == 'Precipitation':
-        data = np.random.uniform(0, 15, n_points)
+        data = np.random.uniform(0, 15, n_points).tolist()
     elif variable == 'Wind Speed':
-        data = np.random.uniform(0, 20, n_points)
+        data = np.random.uniform(0, 20, n_points).tolist()
     else:
-        data = np.random.rand(n_points)
+        data = np.random.rand(n_points).tolist()
     return pd.DataFrame({'Time': time, variable: data})
 
 def generate_random_points_in_polygon(polygon, num_points=2000):
@@ -42,7 +42,7 @@ def generate_random_points_in_polygon(polygon, num_points=2000):
     while len(points) < num_points:
         point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
         if polygon.contains(point):
-            points.append((point.y, point.x))  # Folium expects [lat, lon]
+            points.append((float(point.y), float(point.x)))  # Explicit float conversion
     return points
 
 @st.cache_data
@@ -117,13 +117,35 @@ else:
 
 m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
-# Create a GeoJSON layer for the Sharaan boundary
-folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
-    'fillColor': 'purple',
-    'color': 'red',
-    'weight': 2,
-    'fillOpacity': 0.2
-}).add_to(m)
+# Create a GeoJSON layer for the Sharaan boundary with explicit float conversion
+folium.GeoJson(
+    {
+        "type": sharaan_geojson.get("type", "FeatureCollection"),
+        "features": [
+            {
+                "type": feature.get("type", "Feature"),
+                "geometry": {
+                    "type": feature["geometry"].get("type"),
+                    "coordinates": [[(float(lon), float(lat)) for lon, lat in ring] for ring in feature["geometry"].get("coordinates", [])]
+                    if feature["geometry"].get("type") == "Polygon"
+                    else [[(float(lon), float(lat)) for lon, lat in line] for line in feature["geometry"].get("coordinates", [])]
+                    if feature["geometry"].get("type") == "LineString"
+                    else [float(coord) for coord in feature["geometry"].get("coordinates", [])]
+                    if feature["geometry"].get("type") == "Point"
+                    else feature["geometry"].get("coordinates")
+                },
+                "properties": feature.get("properties", {})
+            }
+            for feature in sharaan_geojson.get("features", [])
+        ]
+    },
+    style_function=lambda feature: {
+        'fillColor': 'purple',
+        'color': 'red',
+        'weight': 2,
+        'fillOpacity': 0.2
+    }
+).add_to(m)
 
 # Add heatmap as a GeoJSON layer with styling
 def heatmap_style(feature):
