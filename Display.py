@@ -35,7 +35,7 @@ def generate_random_time_series(variable, n_points=100):
         data = np.random.rand(n_points)
     return pd.DataFrame({'Time': time, variable: data})
 
-def generate_random_points_in_polygon(polygon, num_points=1000):
+def generate_random_points_in_polygon(polygon, num_points=2000):
     """Generates random points within a Shapely polygon."""
     minx, miny, maxx, maxy = polygon.bounds
     points = []
@@ -46,7 +46,7 @@ def generate_random_points_in_polygon(polygon, num_points=1000):
     return points
 
 @st.cache_data
-def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=1000):
+def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=2000):
     """Generates random spatial data for heatmap covering the GeoJSON features."""
     features = geojson['features']
     heatmap_data = []
@@ -92,7 +92,7 @@ selected_variable = st.sidebar.selectbox("Choose a climate variable", ['Temperat
 
 # Generate random data
 time_series_data = generate_random_time_series(selected_variable)
-heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=1000)
+heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=2000)
 
 # --- Time Series Plot ---
 st.subheader(f"{selected_variable} Time Series")
@@ -124,15 +124,14 @@ folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
     'fillOpacity': 0.2
 }).add_to(m)
 
-# Add Heatmap layer with explicit data structure
-heatmap_layer = HeatMap(
-    data=[[lat, lon, intensity] for lat, lon, intensity in heatmap_data],
-    radius=30,
-    blur=25,
-    gradient={0.0: 'blue', 0.5: 'lime', 1.0: 'red'},
-    min_opacity=0.5,
+# Add Heatmap layer with adjusted parameters
+HeatMap(
+    data=heatmap_data,
+    radius=35,
+    blur=30,
+    gradient={0.0: 'blue', 0.3: 'lime', 0.6: 'yellow', 1.0: 'red'},
+    min_opacity=0.6,
     max_val=1.0
-)
-heatmap_layer.add_to(m)
+).add_to(m)
 
 st_folium(m, width=700, height=500)
