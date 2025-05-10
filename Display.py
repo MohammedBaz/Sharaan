@@ -7,9 +7,9 @@ from streamlit_folium import st_folium
 import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
-from folium.plugins import HeatMap
 from shapely.geometry import Point
 import random
+import json
 
 # Define the GeoJSON URL
 geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
@@ -46,10 +46,10 @@ def generate_random_points_in_polygon(polygon, num_points=2000):
     return points
 
 @st.cache_data
-def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polygon=2000):
-    """Generates random spatial data for heatmap covering the GeoJSON features."""
+def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polygon=2000):
+    """Generates GeoJSON-like data for heatmap visualization."""
     features = geojson['features']
-    heatmap_data = []
+    point_features = []
     gdf = gpd.read_file(geojson_url)  # Load GeoDataFrame for Shapely geometries
 
     for index, feature in gdf.iterrows():
@@ -65,21 +65,22 @@ def generate_random_spatial_data_heatmap(geojson, variable, num_points_per_polyg
                     intensity = np.random.uniform(0.4, 0.9)
                 else:
                     intensity = np.random.rand()
-                heatmap_data.append([lat, lon, intensity])
+                point_features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {"intensity": intensity}
+                })
         elif feature.geometry.geom_type == 'MultiPolygon':
             for polygon in feature.geometry.geoms:
                 random_points = generate_random_points_in_polygon(polygon, num_points_per_polygon)
                 for lat, lon in random_points:
-                    if variable == 'Temperature':
-                        intensity = np.random.uniform(0.5, 1.0)
-                    elif variable == 'Precipitation':
-                        intensity = np.random.uniform(0.2, 0.8)
-                    elif variable == 'Wind Speed':
-                        intensity = np.random.uniform(0.4, 0.9)
-                    else:
-                        intensity = np.random.rand()
-                    heatmap_data.append([lat, lon, intensity])
-    return heatmap_data
+                    intensity = np.random.uniform(0.5, 1.0)
+                    point_features.append({
+                        "type": "Feature",
+                        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                        "properties": {"intensity": intensity}
+                    })
+    return {"type": "FeatureCollection", "features": point_features}
 
 # Load GeoJSON data
 sharaan_geojson = load_geojson(geojson_url)
@@ -92,7 +93,7 @@ selected_variable = st.sidebar.selectbox("Choose a climate variable", ['Temperat
 
 # Generate random data
 time_series_data = generate_random_time_series(selected_variable)
-heatmap_data = generate_random_spatial_data_heatmap(sharaan_geojson, selected_variable, num_points_per_polygon=2000)
+heatmap_geojson_data = generate_random_spatial_data_geojson(sharaan_geojson, selected_variable, num_points_per_polygon=2000)
 
 # --- Time Series Plot ---
 st.subheader(f"{selected_variable} Time Series")
@@ -114,7 +115,7 @@ if not gdf.empty:
 else:
     center_lat, center_lon = 26.9, 37.8  # Default if GeoJSON fails to load
 
-m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
 # Create a GeoJSON layer for the Sharaan boundary
 folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
@@ -124,14 +125,20 @@ folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
     'fillOpacity': 0.2
 }).add_to(m)
 
-# Add Heatmap layer with adjusted parameters
-HeatMap(
-    data=heatmap_data,
-    radius=35,
-    blur=30,
-    gradient={0.0: 'blue', 0.3: 'lime', 0.6: 'yellow', 1.0: 'red'},
-    min_opacity=0.6,
-    max_val=1.0
+# Add heatmap as a GeoJSON layer with styling
+def heatmap_style(feature):
+    intensity = feature['properties']['intensity']
+    normalized_intensity = (intensity - 0.2) / 0.8  # Normalize to 0-1
+    color = plt.cm.viridis(normalized_intensity)  # Use a matplotlib colormap
+    hex_color = matplotlib.colors.rgb2hex(color)
+    return {'radius': 6, 'fillColor': hex_color, 'color': hex_color, 'fillOpacity': 0.6, 'weight': 1}
+
+folium.GeoJson(
+    heatmap_geojson_data,
+    point_to_layer=lambda feature, latlng: folium.CircleMarker(
+        location=latlng,
+        style_function=heatmap_style
+    )
 ).add_to(m)
 
 st_folium(m, width=700, height=500)
