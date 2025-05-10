@@ -124,14 +124,15 @@ folium.GeoJson(sharaan_geojson, style_function=lambda feature: {
     'fillOpacity': 0.2
 }).add_to(m)
 
-# Add Heatmap layer with adjusted parameters
-HeatMap(
-    data=heatmap_data,
+# Add Heatmap layer with explicit data structure
+heatmap_layer = HeatMap(
+    data=[[lat, lon, intensity] for lat, lon, intensity in heatmap_data],
     radius=30,
     blur=25,
     gradient={0.0: 'blue', 0.5: 'lime', 1.0: 'red'},
     min_opacity=0.5,
     max_val=1.0
-).add_to(m)
+)
+heatmap_layer.add_to(m)
 
 st_folium(m, width=700, height=500)
