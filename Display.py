@@ -67,7 +67,7 @@ def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polyg
                     intensity = np.random.rand()
                 point_features.append({
                     "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
                     "properties": {"intensity": float(intensity)}
                 })
         elif feature.geometry.geom_type == 'MultiPolygon':
@@ -77,7 +77,7 @@ def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polyg
                     intensity = np.random.uniform(0.5, 1.0)
                     point_features.append({
                         "type": "Feature",
-                        "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                        "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
                         "properties": {"intensity": float(intensity)}
                     })
     return {"type": "FeatureCollection", "features": point_features}
@@ -131,7 +131,7 @@ def heatmap_style(feature):
     normalized_intensity = (intensity - 0.2) / 0.8  # Normalize to 0-1
     color = plt.cm.viridis(normalized_intensity)  # Use a matplotlib colormap
     hex_color = matplotlib.colors.rgb2hex(color)
-    return {'radius': 8, 'fillColor': hex_color, 'color': hex_color, 'fillOpacity': 0.7, 'weight': 1}
+    return {'radius': 10, 'fillColor': hex_color, 'color': hex_color, 'fillOpacity': 0.8, 'weight': 0}
 
 folium.GeoJson(
     heatmap_geojson_data,
