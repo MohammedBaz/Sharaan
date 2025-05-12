@@ -217,7 +217,6 @@ if not param_groups:
 
 # --- Sidebar Navigation ---
 st.sidebar.title("EcoMonitor Navigation")
-# **MODIFICATION:** Added "Prediction" to pages list
 pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics", "🔮 Prediction"]
 selected_page = st.sidebar.radio("Go to", pages)
 
@@ -404,93 +403,83 @@ elif selected_page == "Statistics":
 # --- Page 6: Prediction ---
 elif selected_page == "🔮 Prediction":
     st.title("🔮 Simple Time Series Prediction")
-    st.markdown("Predict future values of a selected parameter using linear regression based on time.")
+    st.markdown("""
+    This section provides a basic forecast using linear regression. 
+    It fits a line to the historical data based on time and extends this line into the future.
+    **Note:** This is a very simple model. Its accuracy is limited, especially if the data has complex patterns (like seasonality) or no clear linear trend. Interpret with caution.
+    """)
     st.markdown("---", unsafe_allow_html=True)
 
+    # **MODIFICATION:** Set a fixed prediction horizon
+    FIXED_DAYS_TO_PREDICT = 30 
+
     if param_groups:
-        # Let user select the parameter group, and we'll predict its 'Mean' value
         pred_param_group_key = st.selectbox(
             "Select Parameter Group to Predict",
             sorted(param_groups.keys()),
             key="prediction_param_group_select"
         )
         
-        # Get the actual column name for the 'Mean' of the selected group
         if pred_param_group_key and 'Mean' in param_groups[pred_param_group_key]:
             target_variable = param_groups[pred_param_group_key]['Mean']
 
-            days_to_predict = st.number_input(
-                "Number of Future Days to Predict",
-                min_value=7,
-                max_value=365, # Limit to a year for simplicity
-                value=30,
-                step=7,
-                key="prediction_days_input"
-            )
+            # **REMOVED:** days_to_predict number input
 
-            if st.button("Run Prediction", key="prediction_run_button"):
+            if st.button("Generate Prediction Plot", key="prediction_run_button"): # Changed button label
                 if target_variable not in df.columns:
                     st.error(f"Target variable '{target_variable}' not found in the dataset.")
                 else:
                     try:
-                        # Prepare data for regression
                         predict_df = df[['Date', target_variable]].copy().dropna()
-                        if len(predict_df) < 2: # Need at least 2 points for regression
+                        if len(predict_df) < 2:
                              st.error(f"Not enough data points for '{target_variable}' to make a prediction.")
                         else:
-                            # Create a numerical time feature (days since first date)
                             predict_df['Time_Step'] = (predict_df['Date'] - predict_df['Date'].min()).dt.days
                             
-                            # X (features) and y (target)
                             X_train = predict_df[['Time_Step']]
                             y_train = predict_df[target_variable]
 
-                            # Fit Linear Regression model
                             model = LinearRegression()
                             model.fit(X_train, y_train)
                             
-                            # Generate future time steps
                             last_time_step = predict_df['Time_Step'].max()
                             last_date = predict_df['Date'].max()
                             
-                            future_time_steps = np.array([last_time_step + i + 1 for i in range(days_to_predict)]).reshape(-1, 1)
-                            future_dates = [last_date + pd.Timedelta(days=i+1) for i in range(days_to_predict)]
+                            # Use FIXED_DAYS_TO_PREDICT
+                            future_time_steps = np.array([last_time_step + i + 1 for i in range(FIXED_DAYS_TO_PREDICT)]).reshape(-1, 1)
+                            future_dates = [last_date + pd.Timedelta(days=i+1) for i in range(FIXED_DAYS_TO_PREDICT)]
                             
-                            # Make predictions
                             future_predictions = model.predict(future_time_steps)
                             
-                            # Create a DataFrame for results
                             predictions_df = pd.DataFrame({
                                 'Date': future_dates,
-                                'Predicted_Value': future_predictions
+                                f'Predicted_{target_variable}': future_predictions # More specific column name
                             })
 
-                            st.subheader("Prediction Results")
-                            st.dataframe(predictions_df.style.format({'Predicted_Value': "{:.2f}"}))
-
-                            # Plot historical data, regression line, and forecast
                             st.subheader("Prediction Plot")
                             fig_pred, ax_pred = plt.subplots(figsize=(12, 6))
                             
-                            # Historical data
-                            sns.lineplot(x='Date', y=target_variable, data=predict_df, ax=ax_pred, label='Historical Data', linestyle='-', linewidth=1.5)
+                            sns.lineplot(x='Date', y=target_variable, data=predict_df, ax=ax_pred, label='Historical Data', linestyle='-', linewidth=1.5, color='blue')
                             
-                            # Regression line on historical data
-                            # Predict on existing time steps to show the fitted line
                             historical_fit = model.predict(X_train)
                             ax_pred.plot(predict_df['Date'], historical_fit, color='red', linestyle='--', label='Fitted Regression Line')
 
-                            # Forecasted data
-                            sns.lineplot(x='Date', y='Predicted_Value', data=predictions_df, ax=ax_pred, label='Forecasted Data', color='green', linestyle='-', linewidth=2)
+                            # Plot forecasted data
+                            ax_pred.plot(predictions_df['Date'], predictions_df[f'Predicted_{target_variable}'], color='green', linestyle='-', linewidth=2, label=f'Forecast ({FIXED_DAYS_TO_PREDICT} days)')
                             
-                            ax_pred.set_title(f"Prediction for {target_variable.replace('_', ' ').title()}", fontsize=14)
+                            ax_pred.set_title(f"Linear Trend & Forecast for {target_variable.replace('_', ' ').title()}", fontsize=14)
                             ax_pred.set_xlabel("Date", fontsize=12)
                             ax_pred.set_ylabel(target_variable.replace('_', ' ').title(), fontsize=12)
                             ax_pred.legend()
                             plt.xticks(rotation=30, ha='right')
                             plt.tight_layout()
                             st.pyplot(fig_pred)
-                            plt.close(fig_pred) # Close figure
+                            plt.close(fig_pred)
+
+                            # Optionally, display the predicted values in a table
+                            st.subheader(f"Forecasted Values for the Next {FIXED_DAYS_TO_PREDICT} Days")
+                            st.dataframe(predictions_df[['Date', f'Predicted_{target_variable}']].style.format({f'Predicted_{target_variable}': "{:.2f}", 'Date': '{:%Y-%m-%d}'}))
+
 
                     except Exception as e:
                         st.error(f"An error occurred during prediction: {e}")
