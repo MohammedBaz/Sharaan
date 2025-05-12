@@ -37,12 +37,12 @@ def load_geojson():
     return response.json()
 
 # Load datasets
-df = load_data()
-geojson = load_geojson()
-
-# Generate sensor locations within protected area
-gdf = gpd.GeoDataFrame.from_features(geojson['features'])
-polygon = gdf.unary_union
+try:
+    df = load_data()
+    geojson = load_geojson()
+except Exception as e:
+    st.error(f"Error loading data: {str(e)}")
+    st.stop()
 
 def generate_sensor_locations(num_sensors=50):
     sensors = []
