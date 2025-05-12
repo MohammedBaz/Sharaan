@@ -145,7 +145,12 @@ geojson, boundary_polygon = load_geojson()
 param_groups = get_parameter_groups(df)
 
 # --- Main App Structure ---
-tab1, tab2, tab3 = st.tabs(["Climate Dashboard", "Temporal Analysis", "Statistical Tests"])
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Climate Dashboard", 
+    "Correlation Analysis",
+    "Temporal Analysis", 
+    "Statistical Tests"
+])
 
 # Shared group selection with unique keys
 def group_selector(default_group='Air_temperature', key_suffix=""):
@@ -222,8 +227,41 @@ with tab1:
         except Exception as e:
             st.error(f"Map error: {str(e)}")
 
-# --- Tab2: Temporal Analysis ---
+# --- Tab2: Correlation Analysis ---
 with tab2:
+    st.title("📊 Correlation Analysis")
+    
+    # Get selected group from Tab1's selection
+    selected_group = st.session_state.get("param_group_dashboard", "Air_temperature")
+    group_data = param_groups.get(selected_group)
+    
+    if not group_data:
+        st.error("No valid parameter group selected")
+        st.stop()
+    
+    # Extract parameters
+    params = [group_data['Max'], group_data['Min'], group_data['Mean']]
+    
+    # Calculate correlations
+    st.subheader(f"Correlation Matrix: {selected_group.replace('_', ' ').title()}")
+    corr_matrix = df[params].corr()
+    
+    # Create heatmap
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(
+        corr_matrix, 
+        annot=True, 
+        fmt=".2f", 
+        cmap="coolwarm", 
+        mask=np.triu(np.ones_like(corr_matrix)),
+        ax=ax
+    )
+    ax.set_xticklabels(['Max', 'Min', 'Mean'], rotation=0)
+    ax.set_yticklabels(['Max', 'Min', 'Mean'], rotation=0)
+    st.pyplot(fig)
+
+# --- Tab3: Temporal Analysis ---
+with tab3:
     st.title("⏳ Temporal Analysis")
     selected_group = group_selector(key_suffix="temporal")
     group_data = param_groups[selected_group]
@@ -249,9 +287,9 @@ with tab2:
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
-# --- Tab3: Statistical Tests ---
-with tab3:
-    st.title("📊 Statistical Testing")
+# --- Tab4: Statistical Tests ---
+with tab4:
+    st.title("📈 Statistical Testing")
     selected_group = group_selector(key_suffix="stats")
     group_data = param_groups[selected_group]
     
