@@ -116,21 +116,41 @@ with tab1:
 with tab2:
     st.markdown('<div class="map-container">', unsafe_allow_html=True)
     
+    # Map tile configuration
+    tile_mapping = {
+        "CartoDB Positron": "CartoDB positron",
+        "OpenStreetMap": "OpenStreetMap",
+        "Stamen Terrain": "Stamen Terrain"
+    }
+    
     # Create Folium map
-    m = folium.Map(location=[25.5, 37.5], zoom_start=9, 
-                  tiles=map_style if map_style != "CartoDB Positron" else "CartoDB positron")
+    m = folium.Map(location=[25.5, 37.5], 
+                  zoom_start=9, 
+                  tiles=tile_mapping[map_style])
     
-    # Generate heatmap data
-    heat_data = [[25.3 + np.random.rand()/2, 37.2 + np.random.rand()/2, np.random.rand()] 
-                for _ in range(200)]
-    
-    # Add heatmap layer
-    HeatMap(
-        heat_data,
-        radius=15,
-        blur=20,
-        gradient={0.4: 'blue', 0.65: 'lime', 1: 'red'}
-    ).add_to(m)
+    # Generate validated heatmap data
+    heat_data = []
+    for _ in range(200):
+        try:
+            lat = 25.3 + np.random.rand()/2
+            lon = 37.2 + np.random.rand()/2
+            intensity = float(np.random.rand())
+            heat_data.append([lat, lon, intensity])
+        except:
+            continue
+
+    # Add heatmap layer with corrected gradient
+    if heat_data:
+        HeatMap(
+            heat_data,
+            radius=15,
+            blur=20,
+            gradient={
+                '0.4': '#0000ff',  # Blue
+                '0.65': '#00ff00',  # Lime
+                '1.0': '#ff0000'    # Red
+            }
+        ).add_to(m)
     
     # Add protected area boundary
     folium.GeoJson(
@@ -149,8 +169,8 @@ with tab2:
 
 # Footer
 st.markdown("---")
-st.caption("""
+st.caption(f"""
 🔍 **Data Source**: Simulated demonstration data  
 🗺️ **Base Map**: © OpenStreetMap contributors  
-📅 **Last Updated**: {date}  
-""".format(date=datetime.now().strftime("%Y-%m-%d %H:%M")))
+📅 **Last Updated**: {datetime.now().strftime("%Y-%m-%d %H:%M")}  
+""")
