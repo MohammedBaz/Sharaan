@@ -26,6 +26,9 @@ def load_data():
         df = pd.read_csv(DATA_URL)
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         
+        # Standardize column names
+        df.columns = df.columns.str.replace(' ', '_')
+        
         if df['Date'].isnull().any():
             invalid_dates = df[df['Date'].isnull()]['Date'].unique()
             st.error(f"Invalid date formats found: {invalid_dates}")
@@ -73,6 +76,26 @@ def normalize_value(value, overall_min, overall_max):
     if overall_max == overall_min:
         return 0.5
     return (np.clip(value, overall_min, overall_max) - overall_min) / (overall_max - overall_min)
+
+def get_parameter_groups(df):
+    """Identify parameter groups from column names"""
+    groups = {}
+    for col in df.columns:
+        if col == 'Date': continue
+        if '_' in col:
+            # Split into prefix and parameter name
+            parts = col.split('_')
+            if len(parts) < 2: continue
+            prefix = parts[0]
+            parameter = '_'.join(parts[1:])
+            
+            if parameter not in groups:
+                groups[parameter] = {
+                    'Max': f"Max_{parameter}",
+                    'Min': f"Min_{parameter}",
+                    'Mean': f"Mean_{parameter}"
+                }
+    return groups
 
 # --- Statistical Functions ---
 def run_ttest(data, variable, group_var):
@@ -193,22 +216,52 @@ with tab1:
 with tab2:
     # --- Temporal Analysis Tab ---
     st.title("⏳ Temporal Analysis")
-    st.subheader("Detailed Time Series Analysis")
+    st.subheader("Parameter Group Trends")
     
-    analysis_var = st.selectbox("Select Analysis Variable", 
-                              df.select_dtypes(include=np.number).columns.tolist())
+    # Get parameter groups
+    param_groups = get_parameter_groups(df)
+    selected_group = st.selectbox("Select Parameter Group", sorted(param_groups.keys()))
+    
+    # Get relevant columns
+    group_cols = param_groups[selected_group]
+    cols_to_plot = [group_cols['Max'], group_cols['Min'], group_cols['Mean']]
     
     # Rolling Average Control
     window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7)
     
     # Process data
-    ts_data = filtered_df.set_index('Date')[analysis_var].rolling(window=window_size).mean()
+    ts_data = filtered_df.set_index('Date')[cols_to_plot].rolling(window=window_size).mean()
     
-    # Create plot
+    # Create plot with styling
     fig, ax = plt.subplots(figsize=(12, 6))
-    ts_data.plot(ax=ax, title=f"{analysis_var} with {window_size}-Day Rolling Average")
-    ax.set_ylabel(analysis_var)
+    
+    # Style configuration
+    style_map = {
+        'Max': {'color': '#e74c3c', 'linestyle': '--', 'label': 'Max'},
+        'Min': {'color': '#3498db', 'linestyle': '--', 'label': 'Min'},
+        'Mean': {'color': '#2ecc71', 'linewidth': 2, 'label': 'Mean'}
+    }
+    
+    # Plot lines
+    for prefix in ['Max', 'Mean', 'Min']:
+        col = group_cols[prefix]
+        sns.lineplot(data=ts_data, x=ts_data.index, y=col, ax=ax,
+                    **style_map[prefix])
+    
+    # Add shaded range
+    ax.fill_between(ts_data.index,
+                    ts_data[group_cols['Min']],
+                    ts_data[group_cols['Max']],
+                    color='#95a5a6', alpha=0.2,
+                    label='Min-Max Range')
+    
+    # Formatting
+    title = selected_group.replace('_', ' ').title()
+    ax.set_title(f"{title} Trends with {window_size}-Day Rolling Average")
+    ax.set_ylabel("Value")
+    ax.legend()
     ax.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
     st.pyplot(fig)
 
 with tab3:
@@ -223,7 +276,11 @@ with tab3:
         with col1:
             variable = st.selectbox("Variable", numeric_vars)
         with col2:
-            group_var = st.selectbox("Group Variable", df.columns)
+            valid_group_vars = [col for col in df.columns if df[col].nunique() == 2]
+            if not valid_group_vars:
+                st.error("No valid group variables found. Requires a column with exactly two categories.")
+                st.stop()
+            group_var = st.selectbox("Group Variable", valid_group_vars)
         
         if st.button("Run T-Test"):
             result, error = run_ttest(df, variable, group_var)
