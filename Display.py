@@ -231,51 +231,71 @@ with tab1:
 with tab2:
     st.title("📊 Correlation Analysis")
     
-    col1, col2 = st.columns(2)
-    with col1:
-        # Get selected group from Tab1
-        group1 = st.session_state.get("param_group_dashboard", "Air_temperature")
-        st.subheader(f"Primary Parameter: {group1.replace('_', ' ').title()}")
-        
-    with col2:
-        # Select second group
-        group2 = group_selector(default_group="Relative_humidity", key_suffix="correlation")
-        st.subheader(f"Secondary Parameter: {group2.replace('_', ' ').title()}")
-
-    # Get variables for both groups
-    group1_vars = param_groups[group1].values()
-    group2_vars = param_groups[group2].values()
-    all_vars = list(group1_vars) + list(group2_vars)
+    # Get excluded parameter from Tab1
+    excluded_param = st.session_state.get("param_group_dashboard", None)
     
-    # Calculate correlations
+    # Get available parameters for selection
+    available_params = [p for p in param_groups.keys() if p != excluded_param]
+    
+    # Multi-select parameters
+    selected_params = st.multiselect(
+        "Select Parameters for Correlation Analysis",
+        options=available_params,
+        default=available_params[:2] if len(available_params) >=2 else [],
+        help="Select at least two parameters (dashboard parameter excluded)",
+        key="corr_params"
+    )
+    
+    if len(selected_params) < 2:
+        st.warning("Please select at least two parameters")
+        st.stop()
+    
+    # Collect all variables from selected parameters
+    corr_vars = []
+    for param in selected_params:
+        corr_vars.extend([
+            param_groups[param]['Max'],
+            param_groups[param]['Min'],
+            param_groups[param]['Mean']
+        ])
+    
+    # Calculate correlation matrix
     st.subheader("Cross-Parameter Correlation Matrix")
-    corr_matrix = df[all_vars].corr()
+    corr_matrix = df[corr_vars].corr()
     
-    # Create heatmap
-    fig, ax = plt.subplots(figsize=(10, 8))
+    # Create labels with parameter types
+    labels = []
+    for param in selected_params:
+        labels.extend([
+            f"{param}\n(Max)",
+            f"{param}\n(Min)", 
+            f"{param}\n(Mean)"
+        ])
+    
+    # Create visualization
+    fig, ax = plt.subplots(figsize=(12, 10))
     sns.heatmap(
-        corr_matrix, 
-        annot=True, 
-        fmt=".2f", 
-        cmap="coolwarm", 
-        vmin=-1, 
+        corr_matrix,
+        annot=True,
+        fmt=".2f",
+        cmap="coolwarm",
+        vmin=-1,
         vmax=1,
-        mask=np.triu(np.ones_like(corr_matrix)),
+        square=True,
+        xticklabels=labels,
+        yticklabels=labels,
         ax=ax
     )
     
-    # Add separation line between groups
-    ax.axhline(3, color='white', lw=3)
-    ax.axvline(3, color='white', lw=3)
+    # Add separation lines between parameters
+    num_vars = len(selected_params)
+    for i in range(1, num_vars):
+        pos = i * 3
+        ax.axhline(pos, color='white', lw=2)
+        ax.axvline(pos, color='white', lw=2)
     
-    # Custom labels
-    labels = [
-        *[f"{group1}\n({v.split('_')[0]})" for v in group1_vars],
-        *[f"{group2}\n({v.split('_')[0]})" for v in group2_vars]
-    ]
-    ax.set_xticklabels(labels, rotation=45, ha='right')
-    ax.set_yticklabels(labels, rotation=0)
-    
+    plt.xticks(rotation=45, ha='right')
+    plt.yticks(rotation=0)
     st.pyplot(fig)
 
 # --- Remaining Tabs (unchanged) ---
