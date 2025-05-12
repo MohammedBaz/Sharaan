@@ -64,6 +64,19 @@ def generate_sensor_locations(num_sensors=50):
         point = Point(
             random.uniform(minx, maxx),
             random.uniform(miny, maxy)
+        )
+        if polygon.contains(point):
+            sensors.append((point.y, point.x))
+        attempts += 1
+        
+    if len(sensors) < num_sensors:
+        st.warning(f"Only generated {len(sensors)}/{num_sensors} valid sensor locations")
+    return sensors
+    
+    while len(sensors) < num_sensors and attempts < num_sensors * 2:
+        point = Point(
+            random.uniform(minx, maxx),
+            random.uniform(miny, maxy)
         if polygon.contains(point):
             sensors.append((point.y, point.x))
         attempts += 1
