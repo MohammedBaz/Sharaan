@@ -35,41 +35,57 @@ VIDEO_CONFIG = {"autoplay": False, "muted": True, "loop": False}
 st.markdown("""
     <style>
         /* Style the main background */
-        .main { background-color: #f8f9fa; padding: 1.5rem; } /* Increased padding */
+        .main { background-color: #f8f9fa; padding: 1.5rem; }
 
-        /* **FIX: Reduce space above main content block (where title is)** */
+        /* Adjust block container padding (may need tweaking with sidebar) */
         .block-container {
-            padding-top: 1rem !important; /* Reduce top padding */
-            padding-bottom: 1rem !important; /* Adjust bottom padding */
-            padding-left: 2rem !important; /* Adjust left padding */
-            padding-right: 2rem !important; /* Adjust right padding */
+            padding-top: 2rem !important; /* Re-adjust top padding slightly */
+            padding-bottom: 1rem !important;
+            padding-left: 3rem !important; /* Increase left/right padding */
+            padding-right: 3rem !important;
         }
 
+        /* Style the sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #eaf2f8; /* Light blue background */
+            padding: 1rem;
+        }
+         [data-testid="stSidebar"] h1 {
+            color: #1a5276; /* Darker blue title */
+            font-size: 1.8em;
+            margin-bottom: 1rem;
+         }
+         [data-testid="stSidebar"] .stRadio > label {
+             padding-bottom: 10px; /* Space below radio title */
+         }
+         [data-testid="stSidebar"] .stRadio > div > div {
+             padding: 8px 0px; /* Spacing between radio buttons */
+             font-size: 1.05em;
+         }
+
+
         /* Style the video player */
-        .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;} /* Adjusted shadow/margin */
+        .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;}
         /* Style containers (used for metrics) */
         .metric-container {
             background-color: #ffffff;
-            border-radius: 8px; /* Slightly less rounded */
-            border: 1px solid #e0e0e0; /* Add subtle border */
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
             padding: 15px 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04); /* Softer shadow */
-            margin-bottom: 15px; /* Increased margin */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            margin-bottom: 15px;
             text-align: center;
         }
-        /* Style the main titles */
-        h1, h2 { color: #2c3e50; font-weight: 600; margin-top: 0rem; padding-top: 0rem;} /* Added font weight, reduce top margin */
-        /* Style subheaders */
-        h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;} /* Added border */
+        /* Style the main titles in the main area */
+        h1, h2 { color: #2c3e50; font-weight: 600; margin-top: 0rem; padding-top: 0rem;}
+        /* Style subheaders in the main area */
+        h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
         /* Specific styling for metric containers */
-        .metric-container h2 { margin-top: 8px; margin-bottom: 5px; font-size: 2.2em; color: #1a5276; font-weight: 700;} /* Adjusted color/weight */
-        .metric-container span { font-size: 0.95em; color: #555; font-weight: 500;} /* Adjusted size/weight */
+        .metric-container h2 { margin-top: 8px; margin-bottom: 5px; font-size: 2.2em; color: #1a5276; font-weight: 700;}
+        .metric-container span { font-size: 0.95em; color: #555; font-weight: 500;}
         /* Ensure plots have some breathing room */
-        .stPlotlyChart, .stpyplot { margin-bottom: 1.5rem; background-color: #ffffff; border-radius: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border: 1px solid #e0e0e0;} /* Added background/border */
-        /* Style tabs */
-        .stTabs [data-baseweb="tab-list"] { gap: 24px; border-bottom: 2px solid #e0e0e0; } /* Added border */
-        .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: transparent; border-radius: 4px 4px 0 0; gap: 8px; padding: 10px 15px; border: 0px; color: #555; }
-        .stTabs [aria-selected="true"] { background-color: transparent; color: #1a5276; border-bottom: 2px solid #1a5276; font-weight: 600; } /* Active tab style */
+        .stPlotlyChart, .stpyplot { margin-bottom: 1.5rem; background-color: #ffffff; border-radius: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border: 1px solid #e0e0e0;}
+        /* Remove tab styling as tabs are gone */
         /* Style selectbox and date input */
         .stSelectbox div[data-baseweb="select"] > div { background-color: #ffffff; border-radius: 6px;}
         .stDateInput div[data-baseweb="input"] > div { background-color: #ffffff; border-radius: 6px;}
@@ -197,12 +213,17 @@ if not param_groups:
     st.error("Error: Could not identify valid parameter groups (Max, Min, Mean) from column names. Please check CSV format.")
     st.stop()
 
-# --- Main App Structure ---
-tabs = ["🌿 Green Cover", "📊 Dashboard", "🔗 Correlation", "📈 Temporal", "📉 Statistics"]
-tab1, tab2, tab3, tab4, tab5 = st.tabs(tabs)
+# --- Sidebar Navigation ---
+st.sidebar.title("EcoMonitor Navigation")
+# Define page names (consider removing emojis if they cause issues with selection logic)
+pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
+# Use radio buttons for navigation
+selected_page = st.sidebar.radio("Go to", pages)
 
-# --- Tab1: Green Cover ---
-with tab1:
+# --- Main Page Content (Conditional Display) ---
+
+# --- Page 1: Green Cover ---
+if selected_page == "Green Cover":
     st.title("🌳 Sharaan Vegetation Dynamics Monitor")
     col1, col2, col3 = st.columns([1, 5, 1])
     with col2:
@@ -216,8 +237,8 @@ with tab1:
         except Exception as e:
             st.error(f"Error loading video: {str(e)}")
 
-# --- Tab2: Climate Dashboard ---
-with tab2:
+# --- Page 2: Climate Dashboard ---
+elif selected_page == "Dashboard":
     st.title("📊 Climate & Environmental Dashboard")
 
     st.subheader("Dashboard Controls")
@@ -226,32 +247,34 @@ with tab2:
     with control_col1:
         if param_groups:
             groups_list = sorted(param_groups.keys())
-            selected_group_key = st.selectbox(
+            # Use a unique key for this specific selectbox instance
+            selected_group_key_dashboard = st.selectbox(
                 "Select Parameter Group",
                 groups_list,
-                key="dashboard_group_select",
+                key="dashboard_group_select_main", # Unique key
                 index=0
             )
         else:
             st.warning("No parameter groups available.")
-            selected_group_key = None
+            selected_group_key_dashboard = None
 
     with control_col2:
         min_date = df['Date'].min().date()
         max_date = df['Date'].max().date()
-        selected_date_range = st.date_input(
+        # Use a unique key for this specific date input instance
+        selected_date_range_dashboard = st.date_input(
             "Select Date Range",
             value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
-            key="dashboard_date_range"
+            key="dashboard_date_range_main" # Unique key
         )
     st.markdown("---", unsafe_allow_html=True)
 
     # --- Data Filtering and Display ---
-    if selected_group_key and len(selected_date_range) == 2:
-        group_cols_info = param_groups[selected_group_key]
-        start_date, end_date = pd.to_datetime(selected_date_range[0]), pd.to_datetime(selected_date_range[1])
+    if selected_group_key_dashboard and len(selected_date_range_dashboard) == 2:
+        group_cols_info = param_groups[selected_group_key_dashboard]
+        start_date, end_date = pd.to_datetime(selected_date_range_dashboard[0]), pd.to_datetime(selected_date_range_dashboard[1])
 
         if start_date > end_date:
             st.error("Error: Start date cannot be after end date.")
@@ -287,14 +310,14 @@ with tab2:
             # Line chart for trends over time
             with vis_col1:
                 fig_line, ax_line = plt.subplots(figsize=(10, 5))
-                plot_title = f"{selected_group_key.replace('_', ' ').title()} Trend ({selected_date_range[0]} to {selected_date_range[1]})"
+                plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend ({selected_date_range_dashboard[0]} to {selected_date_range_dashboard[1]})"
                 ax_line.set_title(plot_title, fontsize=14)
                 for prefix in ['Max', 'Mean', 'Min']:
                     if prefix in group_cols_info:
                         col_name = group_cols_info[prefix]
                         sns.lineplot(data=filtered_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=4, linestyle='-')
 
-                ax_line.set_ylabel(selected_group_key.replace('_', ' '), fontsize=12)
+                ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
                 ax_line.set_xlabel("Date", fontsize=12)
                 ax_line.legend(title="Statistic")
                 plt.xticks(rotation=30, ha='right')
@@ -331,17 +354,18 @@ with tab2:
         else:
             st.warning("No data available for the selected date range and parameter group.")
     else:
-         if not selected_group_key:
+         if not selected_group_key_dashboard:
              st.warning("Please select a parameter group using the controls above.")
-         elif len(selected_date_range) != 2:
+         elif len(selected_date_range_dashboard) != 2:
               st.warning("Please select a valid date range using the controls above.")
 
 
-# --- Tab3: Correlation Analysis ---
-with tab3:
+# --- Page 3: Correlation Analysis ---
+elif selected_page == "Correlation":
     st.title("🔗 Cross-Parameter Correlation Analysis")
 
-    excluded_group = st.session_state.get("dashboard_group_select", None)
+    # Access the selection from the Dashboard page using its unique key
+    excluded_group = st.session_state.get("dashboard_group_select_main", None)
     available_groups = sorted([p for p in param_groups.keys() if p != excluded_group])
 
     if len(available_groups) >= 2:
@@ -349,7 +373,7 @@ with tab3:
             "Select parameters to correlate (select at least 2)",
             available_groups,
             default=available_groups[:min(len(available_groups), 3)],
-            key="correlation_params_select"
+            key="correlation_params_select_main" # Unique key
         )
         st.markdown("---", unsafe_allow_html=True)
 
@@ -395,11 +419,11 @@ with tab3:
         else:
             st.info("Please select at least 2 parameter groups to calculate correlations.")
     else:
-        st.warning("Not enough parameter groups available (minimum 2 required) to perform correlation analysis, possibly due to the parameter selected on the Dashboard tab being excluded.")
+        st.warning("Not enough parameter groups available (minimum 2 required) to perform correlation analysis, possibly due to the parameter selected on the Dashboard page being excluded.")
 
 
-# --- Tab4: Temporal Analysis ---
-with tab4:
+# --- Page 4: Temporal Analysis ---
+elif selected_page == "Temporal":
     st.title("📈 Temporal Analysis with Rolling Averages")
 
     if param_groups:
@@ -408,13 +432,13 @@ with tab4:
             temporal_group_key = st.selectbox(
                 "Select Parameter Group",
                 sorted(param_groups.keys()),
-                key="temporal_group_select"
+                key="temporal_group_select_main" # Unique key
             )
         with col2_temp:
             rolling_window_days = st.slider(
                 "Select Rolling Window Size (days)",
                 min_value=1, max_value=90, value=7, step=1,
-                key="temporal_window_slider"
+                key="temporal_window_slider_main" # Unique key
             )
         st.markdown("---", unsafe_allow_html=True)
 
@@ -459,14 +483,14 @@ with tab4:
         st.warning("No parameter groups available for temporal analysis.")
 
 
-# --- Tab5: Statistics ---
-with tab5:
+# --- Page 5: Statistics ---
+elif selected_page == "Statistics":
     st.title("📉 Statistical Hypothesis Testing")
 
     test_type = st.selectbox(
         "Select Analysis Type",
         ["T-Test (Compare 2 Groups)", "ANOVA (Compare 2+ Groups)", "Linear Regression (Relationship)"],
-        key="stats_test_type_select"
+        key="stats_test_type_select_main" # Unique key
     )
     st.markdown("---", unsafe_allow_html=True)
 
@@ -480,17 +504,17 @@ with tab5:
                  st.warning("No numeric variables found in the data for T-Test.")
                  t_test_variable = None
             else:
-                t_test_variable = st.selectbox("Variable (Numeric)", numeric_vars_ttest, key="ttest_variable_select")
+                t_test_variable = st.selectbox("Variable (Numeric)", numeric_vars_ttest, key="ttest_variable_select_main") # Unique key
         with col2:
             potential_group_vars = [c for c in df.columns if df[c].dropna().nunique() == 2]
             if potential_group_vars:
-                 t_test_group_var = st.selectbox("Grouping Variable (2 Groups)", potential_group_vars, key="ttest_group_select")
+                 t_test_group_var = st.selectbox("Grouping Variable (2 Groups)", potential_group_vars, key="ttest_group_select_main") # Unique key
             else:
                  st.warning("No suitable grouping variables found (need columns with exactly 2 unique values).")
                  t_test_group_var = None
 
         if t_test_variable and t_test_group_var:
-             if st.button("Run T-Test", key="ttest_run_button"):
+             if st.button("Run T-Test", key="ttest_run_button_main"): # Unique key
                 result, error_msg = run_ttest(df, t_test_variable, t_test_group_var)
                 if error_msg: st.error(f"T-Test Error: {error_msg}")
                 elif result:
@@ -515,17 +539,17 @@ with tab5:
                  st.warning("No numeric variables found for ANOVA.")
                  anova_variable = None
             else:
-                anova_variable = st.selectbox("Variable (Numeric)", numeric_vars_anova, key="anova_variable_select")
+                anova_variable = st.selectbox("Variable (Numeric)", numeric_vars_anova, key="anova_variable_select_main") # Unique key
         with col2:
             potential_anova_groups = [c for c in df.columns if c != anova_variable and df[c].dropna().nunique() > 1]
             if potential_anova_groups:
-                anova_group_var = st.selectbox("Grouping Variable (2+ Groups)", potential_anova_groups, key="anova_group_select")
+                anova_group_var = st.selectbox("Grouping Variable (2+ Groups)", potential_anova_groups, key="anova_group_select_main") # Unique key
             else:
                  st.warning("No suitable grouping variables found (need columns with >1 unique value).")
                  anova_group_var = None
 
         if anova_variable and anova_group_var:
-            if st.button("Run ANOVA", key="anova_run_button"):
+            if st.button("Run ANOVA", key="anova_run_button_main"): # Unique key
                 anova_results, error_msg = run_anova(df, anova_variable, anova_group_var)
                 if error_msg: st.error(f"ANOVA Error: {error_msg}")
                 elif anova_results is not None and not anova_results.empty:
@@ -553,17 +577,17 @@ with tab5:
              reg_x_variable, reg_y_variable = None, None
         else:
             with col1:
-                reg_x_variable = st.selectbox("Independent Variable (X)", numeric_cols_list, key="regression_x_select", index = 0)
+                reg_x_variable = st.selectbox("Independent Variable (X)", numeric_cols_list, key="regression_x_select_main", index = 0) # Unique key
             with col2:
                 available_y = [c for c in numeric_cols_list if c != reg_x_variable]
                 if available_y:
-                     reg_y_variable = st.selectbox("Dependent Variable (Y)", available_y, key="regression_y_select", index = 0 if available_y else -1)
+                     reg_y_variable = st.selectbox("Dependent Variable (Y)", available_y, key="regression_y_select_main", index = 0 if available_y else -1) # Unique key
                 else:
                      st.warning("Error selecting dependent variable.")
                      reg_y_variable = None
 
         if reg_x_variable and reg_y_variable:
-             if st.button("Run Regression", key="regression_run_button"):
+             if st.button("Run Regression", key="regression_run_button_main"): # Unique key
                 model_fit, error_msg = run_regression(df, reg_x_variable, reg_y_variable)
                 if error_msg: st.error(f"Regression Error: {error_msg}")
                 elif model_fit:
@@ -601,5 +625,7 @@ with tab5:
 
 
 # --- Footer ---
-st.markdown("---", unsafe_allow_html=True)
-st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+# Display footer only if a page is selected (optional, for cleaner look)
+if selected_page:
+    st.markdown("---", unsafe_allow_html=True)
+    st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
