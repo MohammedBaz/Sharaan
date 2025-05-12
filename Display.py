@@ -25,8 +25,6 @@ def load_data():
     try:
         df = pd.read_csv(DATA_URL)
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        
-        # Standardize column names
         df.columns = df.columns.str.replace(' ', '_')
         
         if df['Date'].isnull().any():
@@ -34,7 +32,6 @@ def load_data():
             st.error(f"Invalid date formats found: {invalid_dates}")
             st.stop()
             
-        # Convert numeric columns
         numeric_cols = [col for col in df.columns if col != 'Date']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -53,11 +50,9 @@ def load_geojson():
         geojson = response.json()
         gdf = gpd.GeoDataFrame.from_features(geojson['features'])
         
-        # Handle geometries
         if not gdf.geometry.is_valid.all():
             gdf.geometry = gdf.geometry.buffer(0)
         
-        # Union polygons using updated method
         try:
             polygon = gdf.geometry.union_all()
         except AttributeError:
@@ -83,7 +78,6 @@ def get_parameter_groups(df):
     for col in df.columns:
         if col == 'Date': continue
         if '_' in col:
-            # Split into prefix and parameter name
             parts = col.split('_')
             if len(parts) < 2: continue
             prefix = parts[0]
@@ -125,7 +119,6 @@ def run_anova(data, variable, group_var):
 def run_regression(data, x_var, y_var):
     """Linear regression with enhanced error handling"""
     try:
-        # Clean data and validate inputs
         data_clean = data[[x_var, y_var]].dropna()
         if len(data_clean) < 10:
             return None, "At least 10 samples required"
@@ -136,7 +129,6 @@ def run_regression(data, x_var, y_var):
         if data_clean[y_var].nunique() == 1:
             return None, "Dependent variable must have variation"
         
-        # Add constant and fit model
         X = sm.add_constant(data_clean[x_var])
         y = data_clean[y_var]
         model = sm.OLS(y, X).fit()
@@ -150,136 +142,125 @@ def run_regression(data, x_var, y_var):
 st.set_page_config(layout="wide")
 df = load_data()
 geojson, boundary_polygon = load_geojson()
+param_groups = get_parameter_groups(df)
 
 # --- Main App Structure ---
 tab1, tab2, tab3 = st.tabs(["Climate Dashboard", "Temporal Analysis", "Statistical Tests"])
 
+# Shared group selection widget
+def group_selector(default_group='Air_temperature'):
+    groups = sorted(param_groups.keys())
+    return st.selectbox("Parameter Group", groups, index=groups.index(default_group) if default_group in groups else 0)
+
+# --- Tab1: Climate Dashboard ---
 with tab1:
-    # --- Dashboard Tab ---
     st.title("🌦️ Sharaan Climate Dashboard")
     
-    # Sidebar Controls
     with st.sidebar:
         st.header("Controls")
-        numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-        selected_var = st.selectbox("Parameter", numeric_cols, 
-                                  index=numeric_cols.index('Rainfall') if 'Rainfall' in numeric_cols else 0)
+        selected_group = group_selector()
         date_range = st.date_input("Date Range", 
                                  value=(df.Date.min().date(), df.Date.max().date()),
                                  min_value=df.Date.min().date(),
                                  max_value=df.Date.max().date())
+
+    # Get group parameters
+    group_data = param_groups[selected_group]
+    cols_to_show = [group_data['Max'], group_data['Min'], group_data['Mean']]
     
-    # Data Filtering
+    # Data filtering
     start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
     filtered_df = df[(df.Date >= start_date) & (df.Date <= end_date)]
     
-    # Metrics
+    # Group Metrics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Average", f"{filtered_df[selected_var].mean():.2f}")
+        st.metric("Maximum Value", f"{filtered_df[group_data['Max']].max():.2f}")
     with col2:
-        st.metric("Maximum", f"{filtered_df[selected_var].max():.2f}")
+        st.metric("Minimum Value", f"{filtered_df[group_data['Min']].min():.2f}")
     with col3:
-        st.metric("Minimum", f"{filtered_df[selected_var].min():.2f}")
-    
-    # Main Content
+        st.metric("Average Mean", f"{filtered_df[group_data['Mean']].mean():.2f}")
+
+    # Main content
     col_left, col_right = st.columns([2, 1])
     
     with col_left:
-        # Temporal Plot
-        st.subheader("Temporal Trends")
-        fig, ax = plt.subplots(figsize=(10, 4))
-        sns.lineplot(data=filtered_df, x='Date', y=selected_var, color='#2ecc71')
-        ax.set_ylabel(selected_var)
+        st.subheader("Group Trends")
+        fig, ax = plt.subplots(figsize=(12, 5))
+        style_map = {
+            'Max': {'color': '#e74c3c', 'linestyle': '--'},
+            'Min': {'color': '#3498db', 'linestyle': '--'},
+            'Mean': {'color': '#2ecc71', 'linewidth': 2}
+        }
+        
+        for prefix in ['Max', 'Mean', 'Min']:
+            col = group_data[prefix]
+            sns.lineplot(data=filtered_df, x='Date', y=col, ax=ax, 
+                        label=f"{prefix} {selected_group}", **style_map[prefix])
+        
+        ax.set_title(f"{selected_group.replace('_', ' ').title()} Trends")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
     
     with col_right:
-        # Spatial Visualization
-        st.subheader("Spatial Intensity")
+        st.subheader("Spatial Distribution (Mean)")
         try:
-            # Calculate normalized intensity
-            overall_min = df[selected_var].min()
-            overall_max = df[selected_var].max()
-            current_avg = filtered_df[selected_var].mean()
+            overall_min = df[group_data['Mean']].min()
+            overall_max = df[group_data['Mean']].max()
+            current_avg = filtered_df[group_data['Mean']].mean()
             norm_value = normalize_value(current_avg, overall_min, overall_max)
             
-            # Create map plot
             fig, ax = plt.subplots(figsize=(6, 6))
             gdf = gpd.GeoDataFrame.from_features(geojson['features'])
             gdf.plot(ax=ax, facecolor=plt.get_cmap(COLORMAP_NAME)(norm_value), edgecolor='black')
             ax.set_axis_off()
-            ax.set_title(f"{selected_var} Intensity")
+            ax.set_title(f"{selected_group} Intensity")
             st.pyplot(fig)
         except Exception as e:
             st.error(f"Map error: {str(e)}")
 
+# --- Tab2: Temporal Analysis ---
 with tab2:
-    # --- Temporal Analysis Tab ---
     st.title("⏳ Temporal Analysis")
-    st.subheader("Parameter Group Trends")
+    selected_group = group_selector()
+    group_data = param_groups[selected_group]
     
-    # Get parameter groups
-    param_groups = get_parameter_groups(df)
-    selected_group = st.selectbox("Select Parameter Group", sorted(param_groups.keys()))
+    st.subheader(f"Detailed {selected_group.replace('_', ' ').title()} Analysis")
+    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7, key='tab2_window')
     
-    # Get relevant columns
-    group_cols = param_groups[selected_group]
-    cols_to_plot = [group_cols['Max'], group_cols['Min'], group_cols['Mean']]
+    ts_data = df.set_index('Date')[list(group_data.values())].rolling(window=window_size).mean()
     
-    # Rolling Average Control
-    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7)
-    
-    # Process data
-    ts_data = filtered_df.set_index('Date')[cols_to_plot].rolling(window=window_size).mean()
-    
-    # Create plot with styling
     fig, ax = plt.subplots(figsize=(12, 6))
-    
-    # Style configuration
-    style_map = {
-        'Max': {'color': '#e74c3c', 'linestyle': '--', 'label': 'Max'},
-        'Min': {'color': '#3498db', 'linestyle': '--', 'label': 'Min'},
-        'Mean': {'color': '#2ecc71', 'linewidth': 2, 'label': 'Mean'}
-    }
-    
-    # Plot lines
-    for prefix in ['Max', 'Mean', 'Min']:
-        col = group_cols[prefix]
+    for prefix, col in group_data.items():
         sns.lineplot(data=ts_data, x=ts_data.index, y=col, ax=ax,
-                    **style_map[prefix])
+                    label=f"{prefix} {selected_group}")
     
-    # Add shaded range
     ax.fill_between(ts_data.index,
-                    ts_data[group_cols['Min']],
-                    ts_data[group_cols['Max']],
-                    color='#95a5a6', alpha=0.2,
-                    label='Min-Max Range')
+                    ts_data[group_data['Min']],
+                    ts_data[group_data['Max']],
+                    color='#95a5a6', alpha=0.2)
     
-    # Formatting
-    title = selected_group.replace('_', ' ').title()
-    ax.set_title(f"{title} Trends with {window_size}-Day Rolling Average")
-    ax.set_ylabel("Value")
+    ax.set_title(f"{selected_group.replace('_', ' ').title()} with {window_size}-Day Rolling Average")
     ax.legend()
     ax.grid(True, alpha=0.3)
     plt.xticks(rotation=45)
     st.pyplot(fig)
 
+# --- Tab3: Statistical Tests ---
 with tab3:
-    # --- Statistical Testing Tab ---
     st.title("📊 Statistical Testing")
+    selected_group = group_selector()
+    group_data = param_groups[selected_group]
     
     test_type = st.selectbox("Select Test", ["T-Test", "ANOVA", "Regression"])
-    numeric_vars = df.select_dtypes(include=np.number).columns.tolist()
     
     if test_type == "T-Test":
         col1, col2 = st.columns(2)
         with col1:
-            variable = st.selectbox("Variable", numeric_vars)
+            variable = st.selectbox("Variable", list(group_data.values()))
         with col2:
             valid_group_vars = [col for col in df.columns if df[col].nunique() == 2]
-            if not valid_group_vars:
-                st.error("No valid group variables found. Requires a column with exactly two categories.")
-                st.stop()
             group_var = st.selectbox("Group Variable", valid_group_vars)
         
         if st.button("Run T-Test"):
@@ -294,13 +275,12 @@ with tab3:
                 with col2:
                     st.metric("p-value", f"{p_value:.4f}")
                 
-                # Visualization
                 fig, ax = plt.subplots()
                 sns.boxplot(x=group_var, y=variable, data=df)
                 st.pyplot(fig)
     
     elif test_type == "ANOVA":
-        variable = st.selectbox("Variable", numeric_vars)
+        variable = st.selectbox("Variable", list(group_data.values()))
         group_var = st.selectbox("Group Variable", df.columns)
         
         if st.button("Run ANOVA"):
@@ -310,7 +290,6 @@ with tab3:
             else:
                 st.dataframe(result.style.format("{:.4f}"))
                 
-                # Post-hoc analysis
                 st.subheader("Post-hoc Analysis")
                 try:
                     tukey = pairwise_tukeyhsd(df[variable], df[group_var])
@@ -321,9 +300,9 @@ with tab3:
     elif test_type == "Regression":
         col1, col2 = st.columns(2)
         with col1:
-            x_var = st.selectbox("Independent Variable", numeric_vars)
+            x_var = st.selectbox("Independent Variable", list(group_data.values()))
         with col2:
-            y_var = st.selectbox("Dependent Variable", numeric_vars)
+            y_var = st.selectbox("Dependent Variable", list(group_data.values()))
         
         if st.button("Run Regression"):
             model, error = run_regression(df, x_var, y_var)
@@ -333,8 +312,7 @@ with tab3:
                 st.subheader("Regression Results")
                 try:
                     st.text(model.summary().as_text())
-                except Exception as summary_error:
-                    st.error("Could not generate full summary. Key metrics:")
+                except Exception:
                     col1, col2 = st.columns(2)
                     with col1:
                         st.metric("R-squared", f"{model.rsquared:.2f}")
@@ -343,8 +321,6 @@ with tab3:
                         st.metric("P-value", f"{model.pvalues[1]:.4f}")
                         st.metric("Observations", model.nobs)
                 
-                # Diagnostic plots
-                st.subheader("Diagnostic Plots")
                 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
                 sm.qqplot(model.resid, line='s', ax=ax1)
                 sns.scatterplot(x=model.fittedvalues, y=model.resid, ax=ax2)
