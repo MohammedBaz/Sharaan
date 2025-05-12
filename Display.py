@@ -37,11 +37,11 @@ st.markdown("""
         /* Style the main background */
         .main { background-color: #f8f9fa; padding: 1.5rem; }
 
-        /* Adjust block container padding (may need tweaking with sidebar) */
+        /* Adjust block container padding */
         .block-container {
-            padding-top: 2rem !important; /* Re-adjust top padding slightly */
+            padding-top: 2rem !important;
             padding-bottom: 1rem !important;
-            padding-left: 3rem !important; /* Increase left/right padding */
+            padding-left: 3rem !important;
             padding-right: 3rem !important;
         }
 
@@ -57,35 +57,41 @@ st.markdown("""
          }
          [data-testid="stSidebar"] .stRadio > label {
              padding-bottom: 10px; /* Space below radio title */
+             font-weight: 500; /* Make radio label slightly bolder */
          }
          [data-testid="stSidebar"] .stRadio > div > div {
-             padding: 8px 0px; /* Spacing between radio buttons */
+             padding: 10px 0px; /* Increased spacing between radio buttons */
              font-size: 1.05em;
          }
 
 
         /* Style the video player */
         .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;}
-        /* Style containers (used for metrics) */
-        .metric-container {
-            background-color: #ffffff;
-            border-radius: 8px;
+
+        /* Style st.metric */
+        [data-testid="stMetric"] {
+            background-color: #FFFFFF;
             border: 1px solid #e0e0e0;
+            border-radius: 8px;
             padding: 15px 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-            margin-bottom: 15px;
-            text-align: center;
         }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.95em; color: #555; font-weight: 500; /* Style label */
+        }
+        [data-testid="stMetricValue"] {
+             font-size: 2.2em; color: #1a5276; font-weight: 700; /* Style value */
+        }
+
+
         /* Style the main titles in the main area */
         h1, h2 { color: #2c3e50; font-weight: 600; margin-top: 0rem; padding-top: 0rem;}
         /* Style subheaders in the main area */
         h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
-        /* Specific styling for metric containers */
-        .metric-container h2 { margin-top: 8px; margin-bottom: 5px; font-size: 2.2em; color: #1a5276; font-weight: 700;}
-        .metric-container span { font-size: 0.95em; color: #555; font-weight: 500;}
+
         /* Ensure plots have some breathing room */
         .stPlotlyChart, .stpyplot { margin-bottom: 1.5rem; background-color: #ffffff; border-radius: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border: 1px solid #e0e0e0;}
-        /* Remove tab styling as tabs are gone */
+
         /* Style selectbox and date input */
         .stSelectbox div[data-baseweb="select"] > div { background-color: #ffffff; border-radius: 6px;}
         .stDateInput div[data-baseweb="input"] > div { background-color: #ffffff; border-radius: 6px;}
@@ -110,6 +116,8 @@ def load_data():
         numeric_cols = [col for col in df.columns if col != 'Date']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
+        # Drop rows where Date is NaT *after* conversion attempt
+        df.dropna(subset=['Date'], inplace=True)
         return df.sort_values('Date').dropna(how='all', axis=1)
     except Exception as e:
         st.error(f"Fatal Error: Data loading failed. Cannot start the application. Details: {str(e)}")
@@ -145,13 +153,16 @@ def get_parameter_groups(df):
                     if parameter not in groups:
                          groups[parameter] = {}
                     groups[parameter][prefix] = col
+    # Filter out any groups that don't have all three (Max, Min, Mean) columns
+    # Also ensure the parameter name itself isn't empty
     return {param: data for param, data in groups.items() if param and all(k in data for k in ['Max', 'Min', 'Mean'])}
 
 
 def normalize_value(value, overall_min, overall_max):
     """Normalizes a value to a 0-1 range based on overall min/max."""
     if pd.isna(value) or pd.isna(overall_min) or pd.isna(overall_max) or overall_max == overall_min:
-        return 0.5
+        return 0.5 # Default to middle color if data is missing or range is zero
+    # Clip the value to be within the min/max bounds, then normalize
     normalized = (np.clip(value, overall_min, overall_max) - overall_min) / (overall_max - overall_min)
     return normalized
 
@@ -207,7 +218,7 @@ def run_regression(data, x_var, y_var):
 
 # --- Load Data ---
 df = load_data()
-geojson, sharaan_boundary = load_geojson()
+geojson, sharaan_boundary = load_geojson() # Load GeoJSON even if not used on dashboard page
 param_groups = get_parameter_groups(df)
 if not param_groups:
     st.error("Error: Could not identify valid parameter groups (Max, Min, Mean) from column names. Please check CSV format.")
@@ -215,9 +226,7 @@ if not param_groups:
 
 # --- Sidebar Navigation ---
 st.sidebar.title("EcoMonitor Navigation")
-# Define page names (consider removing emojis if they cause issues with selection logic)
 pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
-# Use radio buttons for navigation
 selected_page = st.sidebar.radio("Go to", pages)
 
 # --- Main Page Content (Conditional Display) ---
@@ -241,123 +250,76 @@ if selected_page == "Green Cover":
 elif selected_page == "Dashboard":
     st.title("📊 Climate & Environmental Dashboard")
 
+    # --- Dashboard Controls ---
     st.subheader("Dashboard Controls")
-    control_col1, control_col2 = st.columns(2)
-
-    with control_col1:
-        if param_groups:
-            groups_list = sorted(param_groups.keys())
-            # Use a unique key for this specific selectbox instance
-            selected_group_key_dashboard = st.selectbox(
-                "Select Parameter Group",
-                groups_list,
-                key="dashboard_group_select_main", # Unique key
-                index=0
-            )
-        else:
-            st.warning("No parameter groups available.")
-            selected_group_key_dashboard = None
-
-    with control_col2:
-        min_date = df['Date'].min().date()
-        max_date = df['Date'].max().date()
-        # Use a unique key for this specific date input instance
-        selected_date_range_dashboard = st.date_input(
-            "Select Date Range",
-            value=(min_date, max_date),
-            min_value=min_date,
-            max_value=max_date,
-            key="dashboard_date_range_main" # Unique key
+    # **MODIFICATION:** Removed date input column, selectbox takes full width now
+    if param_groups:
+        groups_list = sorted(param_groups.keys())
+        selected_group_key_dashboard = st.selectbox(
+            "Select Parameter Group",
+            groups_list,
+            key="dashboard_group_select_main", # Unique key
+            index=0
         )
+    else:
+        st.warning("No parameter groups available.")
+        selected_group_key_dashboard = None
+
     st.markdown("---", unsafe_allow_html=True)
 
     # --- Data Filtering and Display ---
-    if selected_group_key_dashboard and len(selected_date_range_dashboard) == 2:
+    # **MODIFICATION:** Filter based only on selected parameter group, use entire dataframe
+    if selected_group_key_dashboard:
         group_cols_info = param_groups[selected_group_key_dashboard]
-        start_date, end_date = pd.to_datetime(selected_date_range_dashboard[0]), pd.to_datetime(selected_date_range_dashboard[1])
+        # Use the whole dataframe for calculations as date range is removed
+        dashboard_df = df # Assign df to dashboard_df for clarity
 
-        if start_date > end_date:
-            st.error("Error: Start date cannot be after end date.")
-            filtered_df = pd.DataFrame()
-        else:
-             filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
-
-        if not filtered_df.empty:
-            # Display Metrics
+        if not dashboard_df.empty:
+            # Display Metrics using st.metric
+            st.subheader(f"Overall Statistics for {selected_group_key_dashboard.replace('_', ' ').title()}")
             metric_cols = st.columns(3)
-            metrics_data = {
-                'MAX': filtered_df[group_cols_info['Max']].max(),
-                'MIN': filtered_df[group_cols_info['Min']].min(),
-                'AVG': filtered_df[group_cols_info['Mean']].mean()
-            }
-            metric_labels = {'MAX': 'Maximum', 'MIN': 'Minimum', 'AVG': 'Average'}
+            # Calculate overall metrics from the *entire* dataset for the selected parameter
+            overall_max = dashboard_df[group_cols_info['Max']].max()
+            overall_min = dashboard_df[group_cols_info['Min']].min()
+            overall_mean = dashboard_df[group_cols_info['Mean']].mean()
 
-            for i, (label, value) in enumerate(metrics_data.items()):
-                with metric_cols[i]:
-                    st.markdown(f"""
-                        <div class="metric-container">
-                            <span>{metric_labels[label]}</span>
-                            <h2>{value:.2f}</h2>
-                        </div>
-                    """, unsafe_allow_html=True)
+            with metric_cols[0]:
+                st.metric(label="Overall Maximum", value=f"{overall_max:.2f}")
+            with metric_cols[1]:
+                st.metric(label="Overall Minimum", value=f"{overall_min:.2f}")
+            with metric_cols[2]:
+                st.metric(label="Overall Average", value=f"{overall_mean:.2f}")
+
 
             st.markdown("---", unsafe_allow_html=True)
 
             # Visualizations
-            st.subheader("Visualizations")
-            vis_col1, vis_col2 = st.columns([3, 2])
+            st.subheader("Trend Over Time")
+            # **MODIFICATION:** Line chart now takes full width as map is removed
+            fig_line, ax_line = plt.subplots(figsize=(12, 5)) # Adjusted figsize
+            plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)" # Updated title
+            ax_line.set_title(plot_title, fontsize=14)
+            for prefix in ['Max', 'Mean', 'Min']:
+                if prefix in group_cols_info:
+                    col_name = group_cols_info[prefix]
+                    # Plot using the full dataframe (dashboard_df)
+                    sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=3, linestyle='-', linewidth=1.5)
 
-            # Line chart for trends over time
-            with vis_col1:
-                fig_line, ax_line = plt.subplots(figsize=(10, 5))
-                plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend ({selected_date_range_dashboard[0]} to {selected_date_range_dashboard[1]})"
-                ax_line.set_title(plot_title, fontsize=14)
-                for prefix in ['Max', 'Mean', 'Min']:
-                    if prefix in group_cols_info:
-                        col_name = group_cols_info[prefix]
-                        sns.lineplot(data=filtered_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=4, linestyle='-')
+            ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
+            ax_line.set_xlabel("Date", fontsize=12)
+            ax_line.legend(title="Statistic")
+            plt.xticks(rotation=30, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig_line)
 
-                ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
-                ax_line.set_xlabel("Date", fontsize=12)
-                ax_line.legend(title="Statistic")
-                plt.xticks(rotation=30, ha='right')
-                plt.tight_layout()
-                st.pyplot(fig_line)
-
-            # Geographical map showing average intensity
-            with vis_col2:
-                if geojson and sharaan_boundary:
-                    try:
-                        current_mean_value = filtered_df[group_cols_info['Mean']].mean()
-                        overall_min = df[group_cols_info['Mean']].min()
-                        overall_max = df[group_cols_info['Mean']].max()
-                        normalized_mean = normalize_value(current_mean_value, overall_min, overall_max)
-
-                        fig_map, ax_map = plt.subplots(1, 1, figsize=(6, 6))
-                        map_gdf = gpd.GeoDataFrame([1], geometry=[sharaan_boundary], crs="EPSG:4326")
-                        map_gdf.plot(
-                            ax=ax_map,
-                            facecolor=plt.get_cmap('viridis')(normalized_mean),
-                            edgecolor='black',
-                            linewidth=0.7
-                        )
-                        ax_map.set_axis_off()
-                        ax_map.set_title(f"Average Intensity\nValue: {current_mean_value:.2f}", fontsize=12)
-                        plt.tight_layout()
-                        st.pyplot(fig_map)
-                        st.caption(f"Normalized Avg: {normalized_mean:.2f} (Range: {overall_min:.2f}-{overall_max:.2f})")
-                    except Exception as e:
-                        st.error(f"Map generation failed: {str(e)}")
-                else:
-                    st.warning("GeoJSON data not available, cannot display map.")
+            # **REMOVED MAP VISUALIZATION BLOCK**
 
         else:
-            st.warning("No data available for the selected date range and parameter group.")
+            # This case might be less likely now without date filtering, but good to keep
+            st.warning("No data available for the selected parameter group.")
     else:
-         if not selected_group_key_dashboard:
-             st.warning("Please select a parameter group using the controls above.")
-         elif len(selected_date_range_dashboard) != 2:
-              st.warning("Please select a valid date range using the controls above.")
+         # Handle case where no parameter group is selected (if possible)
+         st.warning("Please select a parameter group using the control above.")
 
 
 # --- Page 3: Correlation Analysis ---
@@ -629,3 +591,4 @@ elif selected_page == "Statistics":
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+
