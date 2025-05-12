@@ -10,6 +10,10 @@ import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 
+# --- App Setup ---
+# **FIX:** Moved st.set_page_config to be the first Streamlit command after imports.
+st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
+
 # --- Configuration ---
 # URL for the dataset CSV file
 DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/dataset.csv"
@@ -22,6 +26,7 @@ VIDEO_CONFIG = {"autoplay": False, "muted": True, "loop": False}
 
 # --- Custom CSS Styling ---
 # Apply custom styles to the Streamlit app elements for better aesthetics
+# This st.markdown call now correctly comes *after* st.set_page_config
 st.markdown("""
     <style>
         /* Style the main background */
@@ -146,6 +151,7 @@ def run_anova(data, variable, group_var):
         return None, f"ANOVA requires at least two groups for '{group_var}'."
     try:
         # Fit the Ordinary Least Squares (OLS) model
+        # Use backticks to handle potential special characters in column names
         model = ols(f'`{variable}` ~ C(`{group_var}`)', data=data.dropna(subset=[variable, group_var])).fit()
         # Perform ANOVA on the fitted model
         anova_table = sm.stats.anova_lm(model, typ=2)
@@ -172,9 +178,8 @@ def run_regression(data, x_var, y_var):
     except Exception as e:
         return None, f"Regression failed for '{y_var}' vs '{x_var}': {str(e)}"
 
-# --- App Setup ---
-st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
 
+# --- Load Data ---
 # Load data and GeoJSON - handle potential errors during loading
 df = load_data()
 geojson, sharaan_boundary = load_geojson() # Unpack boundary as well
@@ -437,7 +442,7 @@ with tab4:
                 prefix = col.split('_')[0] # Get 'Max', 'Mean', or 'Min'
                 sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal)
 
-            # **CORRECTION:** Fill between rolling Min and Max
+            # Fill between rolling Min and Max
             min_col = group_cols_info['Min']
             max_col = group_cols_info['Max']
             if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
@@ -549,23 +554,30 @@ with tab5:
                 st.write("ANOVA Results Table:")
                 # Display the ANOVA table, formatting p-value
                 st.dataframe(anova_results.style.format({'PR(>F)': '{:.4f}'}))
-                p_value_anova = anova_results['PR(>F)'][0] # Get the p-value
-                alpha = 0.05
-                if p_value_anova < alpha:
-                    st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
-                    # Suggest Tukey's HSD for post-hoc analysis if significant
-                    if df[anova_group_var].nunique() > 2:
-                         st.info("Consider running a post-hoc test (like Tukey's HSD) to see which specific groups differ.")
-                         # Example of how to potentially add Tukey's HSD (optional, can be complex)
-                         # try:
-                         #     tukey = pairwise_tukeyhsd(endog=df[anova_variable].dropna(), groups=df[anova_group_var].dropna(), alpha=0.05)
-                         #     st.write("Tukey's HSD Post-Hoc Test Results:")
-                         #     st.dataframe(pd.DataFrame(data=tukey._results_table.data[1:], columns=tukey._results_table.data[0]))
-                         # except Exception as tukey_e:
-                         #     st.warning(f"Could not run Tukey's HSD: {tukey_e}")
-
+                # Safely access p-value, check if 'PR(>F)' column exists and has values
+                if 'PR(>F)' in anova_results.columns and not anova_results['PR(>F)'].empty:
+                    p_value_anova = anova_results['PR(>F)'].iloc[0] # Get the p-value from the first row
+                    alpha = 0.05
+                    if p_value_anova < alpha:
+                        st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
+                        # Suggest Tukey's HSD for post-hoc analysis if significant
+                        if df[anova_group_var].nunique() > 2:
+                            st.info("Consider running a post-hoc test (like Tukey's HSD) to see which specific groups differ.")
+                            # Example of how to potentially add Tukey's HSD (optional, can be complex)
+                            # try:
+                            #     tukey_data = df[[anova_variable, anova_group_var]].dropna()
+                            #     if len(tukey_data) > 0: # Ensure data exists after dropping NaNs
+                            #         tukey = pairwise_tukeyhsd(endog=tukey_data[anova_variable], groups=tukey_data[anova_group_var], alpha=0.05)
+                            #         st.write("Tukey's HSD Post-Hoc Test Results:")
+                            #         st.dataframe(pd.DataFrame(data=tukey._results_table.data[1:], columns=tukey._results_table.data[0]))
+                            #     else:
+                            #         st.warning("Not enough data after handling missing values to run Tukey's HSD.")
+                            # except Exception as tukey_e:
+                            #     st.warning(f"Could not run Tukey's HSD: {tukey_e}")
+                    else:
+                        st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
                 else:
-                    st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
+                     st.warning("Could not extract p-value from ANOVA results.")
             else:
                 st.error("ANOVA failed to produce results.")
 
@@ -605,16 +617,24 @@ with tab5:
                 st.write(f"**Regression Summary: {reg_y_variable} ~ {reg_x_variable}**")
                 # Display key results
                 st.metric("R-squared (R²)", f"{model_fit.rsquared:.3f}")
-                st.metric(f"Coefficient for {reg_x_variable}", f"{model_fit.params[reg_x_variable]:.3f}")
-                st.metric(f"P-value for {reg_x_variable}", f"{model_fit.pvalues[reg_x_variable]:.4f}")
-                st.metric("Intercept", f"{model_fit.params['const']:.3f}")
+                # Safely access params and pvalues, checking if keys exist
+                if reg_x_variable in model_fit.params:
+                    st.metric(f"Coefficient for {reg_x_variable}", f"{model_fit.params[reg_x_variable]:.3f}")
+                if reg_x_variable in model_fit.pvalues:
+                     st.metric(f"P-value for {reg_x_variable}", f"{model_fit.pvalues[reg_x_variable]:.4f}")
+                if 'const' in model_fit.params:
+                    st.metric("Intercept", f"{model_fit.params['const']:.3f}")
 
                 # Interpretation based on p-value of the coefficient
                 alpha = 0.05
-                if model_fit.pvalues[reg_x_variable] < alpha:
-                    st.success(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is statistically significant (p < {alpha}).")
+                if reg_x_variable in model_fit.pvalues:
+                    if model_fit.pvalues[reg_x_variable] < alpha:
+                        st.success(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is statistically significant (p < {alpha}).")
+                    else:
+                        st.info(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is not statistically significant (p >= {alpha}).")
                 else:
-                    st.info(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is not statistically significant (p >= {alpha}).")
+                    st.warning("Could not determine statistical significance (p-value missing).")
+
 
                 # Optional: Plot the regression line
                 try:
@@ -633,3 +653,4 @@ with tab5:
 # --- Footer ---
 st.markdown("---")
 st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+
