@@ -199,7 +199,7 @@ with tab3:
         corr_vars = []
         for p in selected:
             # CORRECTED LINE BELOW
-            corr_vars.extend([param_groups[p][t] for t in ['Max', 'Min', 'Mean'])
+            corr_vars.extend([param_groups[p][t] for t in ['Max', 'Min', 'Mean']])
         
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.heatmap(
