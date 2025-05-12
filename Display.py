@@ -27,13 +27,13 @@ def generate_random_time_series(variable, n_points=100):
     """Generates random time series data."""
     time = pd.to_datetime(pd.date_range(start='2024-01-01', periods=n_points))
     if variable == 'Temperature':
-        data = np.random.uniform(10, 35, n_points).tolist()
+        data = np.random.uniform(10, 35, n_points)
     elif variable == 'Precipitation':
-        data = np.random.uniform(0, 15, n_points).tolist()
+        data = np.random.uniform(0, 15, n_points)
     elif variable == 'Wind Speed':
-        data = np.random.uniform(0, 20, n_points).tolist()
+        data = np.random.uniform(0, 20, n_points)
     else:
-        data = np.random.rand(n_points).tolist()
+        data = np.random.rand(n_points)
     return pd.DataFrame({'Time': time, variable: data})
 
 def generate_random_points_in_polygon(polygon, num_points=2000):
@@ -70,8 +70,8 @@ def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polyg
                     intensity = np.random.rand()
                 point_features.append({
                     "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                    "properties": {"intensity": intensity}
+                    "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
+                    "properties": {"intensity": float(intensity)}
                 })
     return {"type": "FeatureCollection", "features": point_features}
 
@@ -106,40 +106,51 @@ st.subheader(f"{selected_variable} Intensity Heatmap")
 # Create base map
 m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
-# Add Sharaan boundary with corrected styling
+# Add Sharaan boundary with validated styling
 folium.GeoJson(
     sharaan_geojson,
     style_function=lambda x: {
-        'fill_color': 'purple',  # Changed to snake_case
-        'color': 'red',
+        'fillColor': '#800080',  # Purple in hex
+        'color': '#FF0000',       # Red in hex
         'weight': 2,
-        'fill_opacity': 0.2     # Changed to snake_case
+        'fillOpacity': 0.2
     }
 ).add_to(m)
 
-# Prepare heatmap data with validation
+# Prepare heatmap data with strict validation
 heat_data = []
-for feature in heatmap_geojson_data['features']:
+for feature in heatmap_geojson_data.get('features', []):
     try:
-        lon, lat = feature['geometry']['coordinates']
-        intensity = feature['properties']['intensity']
-        heat_data.append([lat, lon, intensity])
-    except (KeyError, IndexError) as e:
-        continue  # Skip invalid features
+        coords = feature.get('geometry', {}).get('coordinates', [])
+        props = feature.get('properties', {})
+        
+        if len(coords) == 2 and isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float)):
+            lon = float(coords[0])
+            lat = float(coords[1])
+            intensity = float(props.get('intensity', 0))
+            heat_data.append([lat, lon, intensity])
+    except (TypeError, ValueError, KeyError) as e:
+        continue
 
-# Add heatmap layer with safe gradient
-HeatMap(
-    heat_data,
-    radius=20,
-    blur=15,
-    min_opacity=0.4,
-    gradient={
-        0.4: 'blue',
-        0.6: 'lime',
-        0.75: 'yellow',
-        1.0: 'red'
-    }
-).add_to(m)
+# Add heatmap layer with safe parameters
+if heat_data:
+    HeatMap(
+        heat_data,
+        radius=20,
+        blur=15,
+        min_opacity=0.4,
+        max_zoom=18,
+        gradient={
+            0.4: '#0000ff',  # Blue
+            0.6: '#00ff00',  # Lime
+            0.75: '#ffff00', # Yellow
+            1.0: '#ff0000'    # Red
+        }
+    ).add_to(m)
 
-# Display map
-st_folium(m, width=700, height=500)
+# Display map with error handling
+try:
+    st_folium(m, width=700, height=500)
+except Exception as e:
+    st.error("Error rendering map. Please try refreshing the page.")
+    st.error(str(e))
