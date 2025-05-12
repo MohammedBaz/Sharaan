@@ -20,8 +20,8 @@ import warnings
 DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/dataset.csv"
 GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 # Use a Matplotlib colormap for intensity (e.g., 'viridis', 'plasma', 'inferno', 'magma', 'cividis', 'coolwarm', 'RdYlGn')
-# 'coolwarm' might be good for variation (blue=low, red=high)
-COLORMAP_NAME = 'coolwarm'
+# 'viridis' or 'plasma' are good choices for representing levels.
+COLORMAP_NAME = 'viridis'
 
 # --- Caching Functions ---
 
@@ -88,16 +88,16 @@ def load_geojson_gdf():
 
 # --- Helper Function ---
 
-def normalize_variation(std_dev, overall_min, overall_max):
-    """Normalize standard deviation relative to the overall data range."""
-    if pd.isna(std_dev):
-        return 0.0 # No variation if std dev is NaN (e.g., single point)
-    overall_range = overall_max - overall_min
-    if pd.isna(overall_range) or overall_range == 0:
-        return 0.0 # No variation if overall range is zero or NaN
-    # Normalize std dev by the overall range and clip between 0 and 1
-    normalized = std_dev / overall_range
-    return np.clip(normalized, 0.0, 1.0)
+# Renamed function for clarity, as it normalizes any value, not just variation
+def normalize_value(value, overall_min, overall_max):
+    """Normalize a value between 0 and 1 relative to an overall range."""
+    if pd.isna(value) or pd.isna(overall_min) or pd.isna(overall_max):
+        return 0.5 # Default for missing data
+    if overall_max == overall_min: # Avoid division by zero
+        return 0.5 # Neutral value if range is zero
+    # Clip value to be within min/max to handle potential outliers if needed
+    value = np.clip(value, overall_min, overall_max)
+    return (value - overall_min) / (overall_max - overall_min)
 
 # --- App Initialization ---
 st.set_page_config(layout="wide")
@@ -172,15 +172,15 @@ if not filtered_var_data.empty:
     col1, col2, col3 = st.columns(3)
     mean_val = filtered_var_data.mean()
     max_val = filtered_var_data.max()
-    min_val = filtered_var_data.min()
-    std_dev_val = filtered_var_data.std() # Calculate std dev for display
+    min_val = filtered_var_data.min() # Calculate min value
+    # std_dev_val = filtered_var_data.std() # No longer needed for display here
     with col1:
         st.metric("Average", f"{mean_val:.1f}" if pd.notna(mean_val) else "N/A")
     with col2:
         st.metric("Maximum", f"{max_val:.1f}" if pd.notna(max_val) else "N/A")
     with col3:
-        # Display Standard Deviation as a measure of variation
-        st.metric("Std Deviation", f"{std_dev_val:.2f}" if pd.notna(std_dev_val) else "N/A")
+        # *** Display Minimum value again ***
+        st.metric("Minimum", f"{min_val:.1f}" if pd.notna(min_val) else "N/A")
 else:
     st.warning(f"No valid data available for '{selected_var}' in the selected date range.")
 
@@ -208,34 +208,31 @@ with col_plot:
 
 with col_map:
     # *** Updated Subheader and Markdown Text ***
-    st.subheader("🗺️ Area Climate Variation")
-    st.markdown(f"Color represents the **normalized standard deviation** of **{selected_var}** for the period (Colormap: {COLORMAP_NAME}). Red indicates higher variation, Blue indicates lower variation.")
+    st.subheader("🗺️ Area Climate Intensity")
+    st.markdown(f"Color represents the **normalized average value** of **{selected_var}** for the period (Colormap: {COLORMAP_NAME}).")
 
     # --- GeoPandas Plot Generation ---
     if not gdf_map.empty:
         try:
-            # *** Calculate Standard Deviation for the period ***
+            # *** Calculate Average Value for the period ***
             # Use the pre-filtered filtered_var_data
-            period_std_dev = filtered_var_data.std()
+            period_avg_value = filtered_var_data.mean() if not filtered_var_data.empty else np.nan
 
             # Get overall min/max for the selected variable from the *entire* dataset
-            # Ensure the selected variable still exists after cleaning
             if selected_var in df.columns:
                 overall_min = df[selected_var].min()
                 overall_max = df[selected_var].max()
             else:
-                # Handle case where selected variable might have been dropped if all NaN
                 overall_min, overall_max = np.nan, np.nan
                 st.warning(f"Could not determine overall range for '{selected_var}'.")
 
-
-            # *** Normalize the standard deviation ***
-            normalized_variation = normalize_variation(period_std_dev, overall_min, overall_max)
+            # *** Normalize the average value ***
+            normalized_intensity = normalize_value(period_avg_value, overall_min, overall_max)
 
             # Get the colormap
             cmap = plt.get_cmap(COLORMAP_NAME)
-            # Map the normalized variation to a color
-            fill_color = cmap(normalized_variation) if pd.notna(normalized_variation) else 'lightgrey' # Grey if no data/variation
+            # Map the normalized average value to a color
+            fill_color = cmap(normalized_intensity) if pd.notna(normalized_intensity) else 'lightgrey' # Grey if no data
 
             # Create the plot
             fig_map, ax_map = plt.subplots(1, 1, figsize=(8, 8))
@@ -249,7 +246,7 @@ with col_map:
             ax_map.set_xlabel('')
             ax_map.set_ylabel('')
             # *** Updated Map Title ***
-            ax_map.set_title(f'Std Dev of {selected_var}', fontsize=10)
+            ax_map.set_title(f'Avg {selected_var} Intensity', fontsize=10)
             for spine in ax_map.spines.values():
                 spine.set_visible(False)
             ax_map.set_aspect('equal', adjustable='box')
