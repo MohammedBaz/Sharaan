@@ -187,6 +187,7 @@ with tab2:
             st.error(f"Map error: {str(e)}")
 
 # --- Tab3: Correlation Analysis ---
+# --- Tab3: Correlation Analysis ---
 with tab3:
     st.title("Cross-Parameter Correlation")
     
@@ -197,6 +198,7 @@ with tab3:
     if len(selected) >= 2:
         corr_vars = []
         for p in selected:
+            # CORRECTED LINE BELOW
             corr_vars.extend([param_groups[p][t] for t in ['Max', 'Min', 'Mean'])
         
         fig, ax = plt.subplots(figsize=(12, 8))
