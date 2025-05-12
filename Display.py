@@ -62,6 +62,8 @@ def load_geojson_gdf():
         if gdf.empty or gdf.geometry.union_all().is_empty:
              st.error("GeoJSON data resulted in empty geometry.")
              return None
+        # Set Coordinate Reference System (CRS) if known, e.g., WGS84
+        # gdf.set_crs("EPSG:4326", inplace=True) # Uncomment if CRS is known and needed
         return gdf
     except Exception as e:
         st.error(f"Geojson loading/processing failed: {str(e)}")
@@ -136,6 +138,7 @@ if date_range and len(date_range) == 2:
     start_date = pd.to_datetime(date_range[0])
     end_date = pd.to_datetime(date_range[1]).replace(hour=23, minute=59, second=59)
     filtered_df = df.loc[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
+    # Drop NaNs for the selected variable *before* calculations
     filtered_var_df = filtered_df[[selected_var]].dropna()
 else:
     st.warning("Please select a valid date range. Displaying all data.")
@@ -167,22 +170,22 @@ col_plot, col_map = st.columns(2)
 
 with col_plot:
     st.subheader("📈 Temporal Trends")
-    if not filtered_var_df.empty:
-        plot_df_temporal = filtered_df[['Date', selected_var]].dropna(subset=[selected_var])
-        if not plot_df_temporal.empty:
-            fig_ts, ax_ts = plt.subplots(figsize=(10, 4))
-            sns.lineplot(data=plot_df_temporal, x='Date', y=selected_var, color='#2ecc71', linewidth=1.5, ax=ax_ts)
-            ax_ts.set_title(f"{selected_var} Over Time", fontsize=12)
-            ax_ts.set_ylabel(selected_var)
-            ax_ts.set_xlabel("Date")
-            ax_ts.grid(True, linestyle='--', alpha=0.6)
-            sns.despine()
-            plt.tight_layout()
-            st.pyplot(fig_ts) # Pass the figure object
-        else:
-             st.info(f"No valid data points to plot for '{selected_var}'.")
+    # Use filtered_df which still has Date column, dropna only for plotting y-values
+    plot_df_temporal = filtered_df[['Date', selected_var]].dropna(subset=[selected_var])
+    if not plot_df_temporal.empty:
+        # *** Adjusted figsize height ***
+        fig_ts, ax_ts = plt.subplots(figsize=(10, 6)) # Increased height from 4 to 6
+        sns.lineplot(data=plot_df_temporal, x='Date', y=selected_var, color='#2ecc71', linewidth=1.5, ax=ax_ts)
+        ax_ts.set_title(f"{selected_var} Over Time", fontsize=12)
+        ax_ts.set_ylabel(selected_var)
+        ax_ts.set_xlabel("Date")
+        ax_ts.grid(True, linestyle='--', alpha=0.6)
+        sns.despine()
+        plt.tight_layout()
+        st.pyplot(fig_ts) # Pass the figure object
     else:
-         st.info(f"No data to display for '{selected_var}' in the selected time period.")
+         st.info(f"No valid data points to plot for '{selected_var}'.")
+
 
 with col_map:
     st.subheader("🗺️ Area Climate Intensity")
@@ -191,10 +194,10 @@ with col_map:
     # --- GeoPandas Plot Generation ---
     if not gdf_map.empty:
         try:
-            # Calculate average value for the selected variable in the filtered period
-            avg_value = filtered_var_df[selected_var].mean()
+            # Calculate average value (use the pre-filtered filtered_var_df)
+            avg_value = filtered_var_df[selected_var].mean() if not filtered_var_df.empty else np.nan
 
-            # Get overall min/max for the selected variable from the *entire* dataset for consistent normalization
+            # Get overall min/max for the selected variable from the *entire* dataset
             overall_min = df[selected_var].min()
             overall_max = df[selected_var].max()
 
@@ -207,7 +210,8 @@ with col_map:
             fill_color = cmap(normalized_intensity) if pd.notna(normalized_intensity) else 'lightgrey' # Grey if no data
 
             # Create the plot
-            fig_map, ax_map = plt.subplots(1, 1, figsize=(8, 8)) # Adjust figsize as needed
+            # *** Kept figsize=(8, 8) for the map due to aspect ratio constraint ***
+            fig_map, ax_map = plt.subplots(1, 1, figsize=(8, 8))
 
             # Plot the GeoDataFrame
             gdf_map.plot(ax=ax_map, facecolor=fill_color, edgecolor='black', linewidth=0.5)
