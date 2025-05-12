@@ -120,7 +120,6 @@ folium.GeoJson(
 
 # Prepare heatmap data
 heat_data = [
-    [
         feature['geometry']['coordinates'][1],  # Latitude
         feature['geometry']['coordinates'][0],  # Longitude
         feature['properties']['intensity']     # Value
