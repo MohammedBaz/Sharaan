@@ -1,176 +1,125 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import requests
 import folium
 from streamlit_folium import st_folium
-from folium.plugins import HeatMap
 import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
-from datetime import datetime
 from shapely.geometry import Point
 import random
+import requests
 
-# Custom CSS styling
-st.markdown("""
-<style>
-    .main { background-color: #f8f9fa; }
-    .header-text { 
-        color: #2c3e50;
-        font-size: 2.5rem !important;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-    .metric-card {
-        background: white;
-        border-radius: 10px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        margin: 10px;
-    }
-    .map-container {
-        border-radius: 15px;
-        overflow: hidden;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    .chart-container {
-        background: white;
-        border-radius: 15px;
-        padding: 20px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-</style>
-""", unsafe_allow_html=True)
+# Load data from GitHub
+DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/your_data.csv"
+GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 
-# Dashboard Header
-st.markdown('<h1 class="header-text">🌧️ Sharaan Climate Dashboard</h1>', unsafe_allow_html=True)
+@st.cache_data
+def load_data():
+    df = pd.read_csv(DATA_URL, parse_dates=['Date'], dayfirst=True)
+    # Flatten multi-index columns
+    df.columns = [f"{col[0]} ({col[1]})" if col[1] else col[0] for col in df.columns]
+    return df
 
-# ========== Sidebar ==========
+@st.cache_data
+def load_geojson():
+    response = requests.get(GEOJSON_URL)
+    return response.json()
+
+# Load datasets
+df = load_data()
+geojson = load_geojson()
+
+# Generate sensor locations within protected area
+gdf = gpd.GeoDataFrame.from_features(geojson['features'])
+polygon = gdf.unary_union
+
+def generate_sensor_locations(num_sensors=50):
+    sensors = []
+    minx, miny, maxx, maxy = polygon.bounds
+    while len(sensors) < num_sensors:
+        point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
+        if polygon.contains(point):
+            sensors.append((point.y, point.x))
+    return sensors
+
+sensor_locations = generate_sensor_locations()
+
+# Streamlit App
+st.title("Sharaan Protected Area Climate Monitoring")
+
+# Sidebar controls
 with st.sidebar:
-    st.image("https://cdn-icons-png.flaticon.com/512/566/566985.png", width=80)
-    st.title("Settings")
+    st.header("Settings")
+    parameter = st.selectbox(
+        "Select Parameter",
+        options=[col for col in df.columns if col != 'Date'],
+        index=6  # Default to Rainfall (Sum)
+    )
     
-    # Date range selector
     date_range = st.date_input(
         "Select Date Range",
-        value=[datetime(2016, 1, 1), datetime(2016, 8, 1)],
-        min_value=datetime(2016, 1, 1),
-        max_value=datetime(2016, 12, 31)
-    )
-    
-    # Parameter selection
-    parameter = st.selectbox(
-        "Climate Parameter",
-        ["Precipitation (mm)", "Temperature (°C)", "Humidity (%)", "Wind Speed (m/s)"],
-        index=0
-    )
-    
-    st.markdown("---")
-    st.caption("🌍 Spatial Analysis Settings")
-    map_style = st.selectbox(
-        "Map Style",
-        ["CartoDB Positron", "OpenStreetMap", "Stamen Terrain"]
+        value=(df['Date'].min(), df['Date'].max())
     )
 
-# ========== Main Content ==========
-# Metrics Row
+# Filter data based on selection
+mask = (df['Date'] >= pd.to_datetime(date_range[0])) & (df['Date'] <= pd.to_datetime(date_range[1]))
+filtered_df = df.loc[mask]
+
+# Metrics row
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.markdown('<div class="metric-card">📊 **Average**<br><h2>4.4 mm</h2></div>', unsafe_allow_html=True)
+    st.metric("Average", f"{filtered_df[parameter].mean():.1f}")
 with col2:
-    st.markdown('<div class="metric-card">🔥 **Maximum**<br><h2>13.8 mm</h2></div>', unsafe_allow_html=True)
+    st.metric("Maximum", f"{filtered_df[parameter].max():.1f}")
 with col3:
-    st.markdown('<div class="metric-card">❄️ **Minimum**<br><h2>0.1 mm</h2></div>', unsafe_allow_html=True)
+    st.metric("Minimum", f"{filtered_df[parameter].min():.1f}")
 
-# Main Content Tabs
-tab1, tab2 = st.tabs(["📈 Temporal Analysis", "🗺️ Spatial Analysis"])
+# Time Series Plot
+st.subheader(f"Time Series: {parameter}")
+fig, ax = plt.subplots(figsize=(10, 4))
+sns.lineplot(data=filtered_df, x='Date', y=parameter, ax=ax)
+ax.set_xlabel("Date")
+ax.set_ylabel(parameter)
+ax.grid(True, alpha=0.3)
+st.pyplot(fig)
 
-with tab1:
-    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
-    
-    # Generate time series data
-    dates = pd.date_range(start=date_range[0], end=date_range[1], freq='D')
-    precipitation = np.random.gamma(2, 2, len(dates)).round(1)
-    
-    # Create plot
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.lineplot(
-        x=dates,
-        y=precipitation,
-        color='#3498db',
-        linewidth=2.5
-    )
-    
-    # Style plot
-    ax.set_title(f"Daily {parameter} Variation", fontsize=16, pad=20)
-    ax.set_xlabel("Date", fontsize=12)
-    ax.set_ylabel(parameter, fontsize=12)
-    ax.grid(True, alpha=0.3)
-    sns.despine()
-    plt.tight_layout()
-    
-    st.pyplot(fig)
-    st.markdown('</div>', unsafe_allow_html=True)
+# Map Visualization
+st.subheader("Sensor Network Map")
 
-with tab2:
-    st.markdown('<div class="map-container">', unsafe_allow_html=True)
-    
-    # Map tile configuration
-    tile_mapping = {
-        "CartoDB Positron": "CartoDB positron",
-        "OpenStreetMap": "OpenStreetMap",
-        "Stamen Terrain": "Stamen Terrain"
+# Create Folium map
+m = folium.Map(location=[25.5, 37.5], zoom_start=9, tiles="CartoDB positron")
+
+# Add protected area boundary
+folium.GeoJson(
+    geojson,
+    style_function=lambda x: {
+        'fillColor': '#2c3e50',
+        'color': '#e74c3c',
+        'weight': 1.5,
+        'fillOpacity': 0.1
     }
-    
-    # Create Folium map
-    m = folium.Map(location=[25.5, 37.5], 
-                  zoom_start=9, 
-                  tiles=tile_mapping[map_style])
-    
-    # Generate validated heatmap data
-    heat_data = []
-    for _ in range(200):
-        try:
-            lat = 25.3 + np.random.rand()/2
-            lon = 37.2 + np.random.rand()/2
-            intensity = float(np.random.rand())
-            heat_data.append([lat, lon, intensity])
-        except:
-            continue
+).add_to(m)
 
-    # Add heatmap layer with corrected gradient
-    if heat_data:
-        HeatMap(
-            heat_data,
-            radius=15,
-            blur=20,
-            gradient={
-                '0.4': '#0000ff',  # Blue
-                '0.65': '#00ff00',  # Lime
-                '1.0': '#ff0000'    # Red
-            }
-        ).add_to(m)
-    
-    # Add protected area boundary
-    folium.GeoJson(
-        "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson",
-        style_function=lambda x: {
-            'fillColor': '#2c3e50',
-            'color': '#e74c3c',
-            'weight': 1.5,
-            'fillOpacity': 0.1
-        }
+# Add sensor markers with latest readings
+latest_data = df.iloc[-1]  # Get latest readings
+for (lat, lon) in sensor_locations:
+    folium.CircleMarker(
+        location=[lat, lon],
+        radius=5,
+        color='#3498db',
+        fill=True,
+        fill_color='#3498db',
+        popup=f"{parameter}: {latest_data[parameter]:.1f}"
     ).add_to(m)
-    
-    # Display map
-    st_folium(m, width=800, height=500)
-    st.markdown('</div>', unsafe_allow_html=True)
+
+# Display map
+st_folium(m, width=800, height=500)
+
+# Data summary
+st.subheader("Data Summary")
+st.dataframe(filtered_df.describe(), use_container_width=True)
 
 # Footer
 st.markdown("---")
-st.caption(f"""
-🔍 **Data Source**: Simulated demonstration data  
-🗺️ **Base Map**: © OpenStreetMap contributors  
-📅 **Last Updated**: {datetime.now().strftime("%Y-%m-%d %H:%M")}  
-""")
+st.caption("🌍 Sharaan Protected Area Climate Monitoring System | Data updated: " + str(df['Date'].max().date()))
