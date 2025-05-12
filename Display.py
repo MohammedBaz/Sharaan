@@ -123,7 +123,8 @@ heat_data = [
     [
         feature['geometry']['coordinates'][1],  # Latitude
         feature['geometry']['coordinates'][0],  # Longitude
-        feature['properties']['intensity']     # Value
+        feature['properties']['intensity']
+    ]  # Added missing closing bracket for inner list
     for feature in heatmap_geojson_data['features']
 ]
 
