@@ -43,25 +43,23 @@ def load_geojson():
         st.error(f"Geojson loading failed: {str(e)}")
         st.stop()
 
-@st.cache_data
-def generate_sensor_data(_df, _geojson, num_sensors=100):
-    """Generate sensor locations with actual parameter values"""
-    gdf = gpd.GeoDataFrame.from_features(_geojson['features'])
+def generate_sensor_data(df, geojson, selected_var, num_sensors=100):
+    """Generate sensor locations with values for selected parameter"""
+    gdf = gpd.GeoDataFrame.from_features(geojson['features'])
     polygon = gdf.geometry.unary_union
     
     sensors = []
     minx, miny, maxx, maxy = polygon.bounds
-    centroid = polygon.centroid
     
-    # Create random sensor locations
+    # Create random sensor locations with selected parameter values
     for _ in range(num_sensors):
         point = Point(
             random.uniform(minx, maxx),
             random.uniform(miny, maxy)
         )
         if polygon.contains(point):
-            # Get random data from the dataset
-            random_sample = _df.sample(1).iloc[0]
+            # Get random data point for selected variable
+            random_sample = df.sample(1).iloc[0]
             sensors.append({
                 "lat": point.y,
                 "lon": point.x,
@@ -96,10 +94,10 @@ with st.sidebar:
 start_date, end_date = pd.to_datetime(date_range)
 filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)]
 
-# Generate sensor data with actual values
-sensor_data = generate_sensor_data(filtered_df, geojson)
+# Generate sensor data with values for selected parameter
+sensor_data = generate_sensor_data(filtered_df, geojson, selected_var)
 
-# Prepare heatmap data
+# Prepare heatmap data based on selected parameter
 heatmap_points = [[s['lat'], s['lon'], s['value']] for s in sensor_data]
 
 # Get map center from GeoJSON centroid
@@ -126,7 +124,7 @@ folium.GeoJson(
     }
 ).add_to(m)
 
-# Add heatmap layer
+# Add dynamic heatmap layer
 if heatmap_points:
     HeatMap(
         heatmap_points,
@@ -143,4 +141,32 @@ if heatmap_points:
 # Display map
 st_folium(m, width=800, height=500)
 
-# Rest of your metrics and time series code remains the same...
+# Metrics
+st.subheader("📊 Data Statistics")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Average", f"{filtered_df[selected_var].mean():.1f}")
+with col2:
+    st.metric("Maximum", f"{filtered_df[selected_var].max():.1f}")
+with col3:
+    st.metric("Minimum", f"{filtered_df[selected_var].min():.1f}")
+
+# Time Series Plot
+st.subheader("📈 Temporal Trends")
+fig, ax = plt.subplots(figsize=(10, 4))
+sns.lineplot(
+    data=filtered_df,
+    x='Date',
+    y=selected_var,
+    color='#2ecc71',
+    linewidth=2,
+    ax=ax
+)
+ax.set_title(f"{selected_var} Over Time", fontsize=14)
+ax.grid(True, alpha=0.2)
+sns.despine()
+st.pyplot(fig)
+
+# Footer
+st.markdown("---")
+st.caption(f"Data updated: {df['Date'].max().strftime('%Y-%m-%d %H:%M')} | Map tiles by CartoDB")
