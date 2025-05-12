@@ -36,6 +36,15 @@ st.markdown("""
     <style>
         /* Style the main background */
         .main { background-color: #f8f9fa; padding: 1.5rem; } /* Increased padding */
+
+        /* **FIX: Reduce space above main content block (where title is)** */
+        .block-container {
+            padding-top: 1rem !important; /* Reduce top padding */
+            padding-bottom: 1rem !important; /* Adjust bottom padding */
+            padding-left: 2rem !important; /* Adjust left padding */
+            padding-right: 2rem !important; /* Adjust right padding */
+        }
+
         /* Style the video player */
         .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;} /* Adjusted shadow/margin */
         /* Style containers (used for metrics) */
@@ -49,7 +58,7 @@ st.markdown("""
             text-align: center;
         }
         /* Style the main titles */
-        h1, h2 { color: #2c3e50; font-weight: 600; } /* Added font weight */
+        h1, h2 { color: #2c3e50; font-weight: 600; margin-top: 0rem; padding-top: 0rem;} /* Added font weight, reduce top margin */
         /* Style subheaders */
         h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;} /* Added border */
         /* Specific styling for metric containers */
@@ -195,7 +204,6 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(tabs)
 # --- Tab1: Green Cover ---
 with tab1:
     st.title("🌳 Sharaan Vegetation Dynamics Monitor")
-    # REMOVED Subtitle: st.markdown("Visualizing changes in vegetation cover...")
     col1, col2, col3 = st.columns([1, 5, 1])
     with col2:
         try:
@@ -211,7 +219,6 @@ with tab1:
 # --- Tab2: Climate Dashboard ---
 with tab2:
     st.title("📊 Climate & Environmental Dashboard")
-    # REMOVED Subtitle: st.markdown("Explore trends and spatial patterns...")
 
     st.subheader("Dashboard Controls")
     control_col1, control_col2 = st.columns(2)
@@ -239,7 +246,7 @@ with tab2:
             max_value=max_date,
             key="dashboard_date_range"
         )
-    st.markdown("---", unsafe_allow_html=True) # Use markdown for styling consistency
+    st.markdown("---", unsafe_allow_html=True)
 
     # --- Data Filtering and Display ---
     if selected_group_key and len(selected_date_range) == 2:
@@ -253,9 +260,6 @@ with tab2:
              filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy()
 
         if not filtered_df.empty:
-            # **REMOVED** Redundant Subheader for Summary
-            # st.subheader(f"Summary for {selected_group_key.replace('_', ' ').title()} ({selected_date_range[0]} to {selected_date_range[1]})")
-
             # Display Metrics
             metric_cols = st.columns(3)
             metrics_data = {
@@ -283,7 +287,7 @@ with tab2:
             # Line chart for trends over time
             with vis_col1:
                 fig_line, ax_line = plt.subplots(figsize=(10, 5))
-                plot_title = f"{selected_group_key.replace('_', ' ').title()} Trend ({selected_date_range[0]} to {selected_date_range[1]})" # More specific title
+                plot_title = f"{selected_group_key.replace('_', ' ').title()} Trend ({selected_date_range[0]} to {selected_date_range[1]})"
                 ax_line.set_title(plot_title, fontsize=14)
                 for prefix in ['Max', 'Mean', 'Min']:
                     if prefix in group_cols_info:
@@ -293,14 +297,12 @@ with tab2:
                 ax_line.set_ylabel(selected_group_key.replace('_', ' '), fontsize=12)
                 ax_line.set_xlabel("Date", fontsize=12)
                 ax_line.legend(title="Statistic")
-                # ax_line.grid(True, linestyle='--', alpha=0.6) # Already handled by sns.set_style("whitegrid")
                 plt.xticks(rotation=30, ha='right')
                 plt.tight_layout()
                 st.pyplot(fig_line)
 
             # Geographical map showing average intensity
             with vis_col2:
-                # st.markdown("**Average Intensity Map**") # Removed redundant title
                 if geojson and sharaan_boundary:
                     try:
                         current_mean_value = filtered_df[group_cols_info['Mean']].mean()
@@ -317,10 +319,10 @@ with tab2:
                             linewidth=0.7
                         )
                         ax_map.set_axis_off()
-                        ax_map.set_title(f"Average Intensity\nValue: {current_mean_value:.2f}", fontsize=12) # Simplified title
+                        ax_map.set_title(f"Average Intensity\nValue: {current_mean_value:.2f}", fontsize=12)
                         plt.tight_layout()
                         st.pyplot(fig_map)
-                        st.caption(f"Normalized Avg: {normalized_mean:.2f} (Range: {overall_min:.2f}-{overall_max:.2f})") # Shorter caption
+                        st.caption(f"Normalized Avg: {normalized_mean:.2f} (Range: {overall_min:.2f}-{overall_max:.2f})")
                     except Exception as e:
                         st.error(f"Map generation failed: {str(e)}")
                 else:
@@ -338,7 +340,6 @@ with tab2:
 # --- Tab3: Correlation Analysis ---
 with tab3:
     st.title("🔗 Cross-Parameter Correlation Analysis")
-    # REMOVED Subtitle: st.markdown("Explore relationships between...")
 
     excluded_group = st.session_state.get("dashboard_group_select", None)
     available_groups = sorted([p for p in param_groups.keys() if p != excluded_group])
@@ -350,7 +351,7 @@ with tab3:
             default=available_groups[:min(len(available_groups), 3)],
             key="correlation_params_select"
         )
-        st.markdown("---", unsafe_allow_html=True) # Separator
+        st.markdown("---", unsafe_allow_html=True)
 
         if len(selected_corr_groups) >= 2:
             corr_vars_cols = []
@@ -400,7 +401,6 @@ with tab3:
 # --- Tab4: Temporal Analysis ---
 with tab4:
     st.title("📈 Temporal Analysis with Rolling Averages")
-    # REMOVED Subtitle: st.markdown("Smooth out short-term fluctuations...")
 
     if param_groups:
         col1_temp, col2_temp = st.columns([1,1])
@@ -449,7 +449,6 @@ with tab4:
                     ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '), fontsize=12)
                     ax_temporal.set_xlabel("Date", fontsize=12)
                     ax_temporal.legend(loc='best')
-                    # ax_temporal.grid(True, linestyle='--', alpha=0.6) # Handled by sns style
                     plt.tight_layout()
                     st.pyplot(fig_temporal)
                 else:
@@ -463,7 +462,6 @@ with tab4:
 # --- Tab5: Statistics ---
 with tab5:
     st.title("📉 Statistical Hypothesis Testing")
-    # REMOVED Subtitle: st.markdown("Perform basic statistical tests...")
 
     test_type = st.selectbox(
         "Select Analysis Type",
@@ -475,7 +473,6 @@ with tab5:
     # --- T-Test Section ---
     if "T-Test" in test_type:
         st.subheader("Independent Samples T-Test")
-        # REMOVED Subtitle: st.markdown("Compares the means...")
         col1, col2 = st.columns(2)
         with col1:
             numeric_vars_ttest = df.select_dtypes(include=np.number).columns.tolist()
@@ -498,7 +495,7 @@ with tab5:
                 if error_msg: st.error(f"T-Test Error: {error_msg}")
                 elif result:
                     t_stat, p_value = result
-                    st.markdown("##### Results") # Add results title
+                    st.markdown("##### Results")
                     res_col1, res_col2 = st.columns(2)
                     with res_col1: st.metric("T-Statistic", f"{t_stat:.3f}")
                     with res_col2: st.metric("P-Value", f"{p_value:.4g}")
@@ -511,7 +508,6 @@ with tab5:
     # --- ANOVA Section ---
     elif "ANOVA" in test_type:
         st.subheader("One-Way ANOVA")
-        # REMOVED Subtitle: st.markdown("Compares the means...")
         col1, col2 = st.columns(2)
         with col1:
             numeric_vars_anova = df.select_dtypes(include=np.number).columns.tolist()
@@ -549,7 +545,6 @@ with tab5:
     # --- Regression Section ---
     elif "Regression" in test_type:
         st.subheader("Simple Linear Regression")
-        # REMOVED Subtitle: st.markdown("Analyzes the linear relationship...")
         col1, col2 = st.columns(2)
         numeric_cols_list = df.select_dtypes(include=np.number).columns.tolist()
 
@@ -598,7 +593,6 @@ with tab5:
                         ax_reg.set_title(f"Regression: {reg_y_variable} vs {reg_x_variable}", fontsize=14)
                         ax_reg.set_xlabel(reg_x_variable.replace('_',' ').title(), fontsize=12)
                         ax_reg.set_ylabel(reg_y_variable.replace('_',' ').title(), fontsize=12)
-                        # ax_reg.grid(True, linestyle='--', alpha=0.5) # Handled by sns style
                         plt.tight_layout()
                         st.pyplot(fig_reg)
                     except Exception as plot_e: st.warning(f"Could not generate regression plot: {plot_e}")
