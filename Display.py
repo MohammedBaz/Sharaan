@@ -209,10 +209,10 @@ def run_regression(data, x_var, y_var):
     except Exception as e: return None, f"Regression failed: {str(e)}"
 
 # --- CSV Conversion Function ---
-@st.cache_data
-def convert_df_to_csv(df_to_convert):
-  """Converts a Pandas DataFrame to CSV bytes."""
-  return df_to_convert.to_csv(index=False).encode('utf-8')
+# @st.cache_data # This function is no longer used, can be removed or kept for future use
+# def convert_df_to_csv(df_to_convert):
+#   """Converts a Pandas DataFrame to CSV bytes."""
+#   return df_to_convert.to_csv(index=False).encode('utf-8')
 
 # --- PDF Generation Function ---
 def create_dashboard_pdf(param_name, fig, stats_dict):
@@ -249,7 +249,8 @@ def create_dashboard_pdf(param_name, fig, stats_dict):
     img_buffer.close()
 
     # Return PDF as bytes
-    return pdf.output(dest='S').encode('latin-1') # Use latin-1 encoding as recommended by fpdf
+    # **FIX:** pdf.output(dest='S') already returns bytes (or bytearray for Python 3)
+    return pdf.output(dest='S')
 
 
 # --- Load Data ---
@@ -265,16 +266,16 @@ st.sidebar.title("EcoMonitor Navigation")
 pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
 selected_page = st.sidebar.radio("Go to", pages)
 
-# --- Add Download Button to Sidebar ---
-st.sidebar.markdown("---") # Separator
-csv_data = convert_df_to_csv(df) # Convert the main dataframe
-st.sidebar.download_button(
-   label="📥 Download Full Data (CSV)",
-   data=csv_data,
-   file_name='ecomonitor_full_data.csv', # Changed filename slightly
-   mime='text/csv',
-   key='download_csv_all' # Added key
-)
+# --- REMOVED Download Button for Full CSV from Sidebar ---
+# st.sidebar.markdown("---")
+# csv_data = convert_df_to_csv(df)
+# st.sidebar.download_button(
+#    label="📥 Download Full Data (CSV)",
+#    data=csv_data,
+#    file_name='ecomonitor_full_data.csv',
+#    mime='text/csv',
+#    key='download_csv_all'
+# )
 
 
 # --- Main Page Content (Conditional Display) ---
@@ -560,3 +561,4 @@ elif selected_page == "Statistics":
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+
