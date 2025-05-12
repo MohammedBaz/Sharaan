@@ -72,6 +72,10 @@ def generate_sensor_locations(num_sensors=50):
     if len(sensors) < num_sensors:
         st.warning(f"Only generated {len(sensors)}/{num_sensors} valid sensor locations")
     return sensors
+        
+    if len(sensors) < num_sensors:
+        st.warning(f"Only generated {len(sensors)}/{num_sensors} valid sensor locations")
+    return sensors
     
     while len(sensors) < num_sensors and attempts < num_sensors * 2:
         point = Point(
