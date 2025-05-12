@@ -421,14 +421,14 @@ with tab5:
                 </style>
             """, unsafe_allow_html=True)
             
-        except FileNotFoundError:
-            st.error("""
-                Video file not found. Ensure:
-                1. GreenCover.mp4 exists in root directory
+    except FileNotFoundError:
+        st.error("""
+        Video file not found. Ensure:
+        1. GreenCover.mp4 exists in root directory
                 2. File is under 200MB
                 3. MP4 format with H.264 codec
                 """)
-        except Exception as e:
+    except Exception as e:
             st.error(f"Video loading error: {str(e)}")
 
 # --- Footer ---
