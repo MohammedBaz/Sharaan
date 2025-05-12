@@ -147,10 +147,16 @@ param_groups = get_parameter_groups(df)
 # --- Main App Structure ---
 tab1, tab2, tab3 = st.tabs(["Climate Dashboard", "Temporal Analysis", "Statistical Tests"])
 
-# Shared group selection widget
-def group_selector(default_group='Air_temperature'):
+# Shared group selection with unique keys
+def group_selector(default_group='Air_temperature', key_suffix=""):
     groups = sorted(param_groups.keys())
-    return st.selectbox("Parameter Group", groups, index=groups.index(default_group) if default_group in groups else 0)
+    default_index = groups.index(default_group) if default_group in groups else 0
+    return st.selectbox(
+        "Parameter Group", 
+        groups, 
+        index=default_index,
+        key=f"param_group_{key_suffix}"
+    )
 
 # --- Tab1: Climate Dashboard ---
 with tab1:
@@ -158,34 +164,30 @@ with tab1:
     
     with st.sidebar:
         st.header("Controls")
-        selected_group = group_selector()
+        selected_group = group_selector(key_suffix="dashboard")
         date_range = st.date_input("Date Range", 
                                  value=(df.Date.min().date(), df.Date.max().date()),
                                  min_value=df.Date.min().date(),
                                  max_value=df.Date.max().date())
 
-    # Get group parameters
     group_data = param_groups[selected_group]
-    cols_to_show = [group_data['Max'], group_data['Min'], group_data['Mean']]
-    
-    # Data filtering
     start_date, end_date = pd.to_datetime(date_range[0]), pd.to_datetime(date_range[1])
     filtered_df = df[(df.Date >= start_date) & (df.Date <= end_date)]
     
-    # Group Metrics
+    # Metrics
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Maximum Value", f"{filtered_df[group_data['Max']].max():.2f}")
+        st.metric("Maximum", f"{filtered_df[group_data['Max']].max():.2f}")
     with col2:
-        st.metric("Minimum Value", f"{filtered_df[group_data['Min']].min():.2f}")
+        st.metric("Minimum", f"{filtered_df[group_data['Min']].min():.2f}")
     with col3:
-        st.metric("Average Mean", f"{filtered_df[group_data['Mean']].mean():.2f}")
+        st.metric("Average", f"{filtered_df[group_data['Mean']].mean():.2f}")
 
     # Main content
     col_left, col_right = st.columns([2, 1])
     
     with col_left:
-        st.subheader("Group Trends")
+        st.subheader("Trend Analysis")
         fig, ax = plt.subplots(figsize=(12, 5))
         style_map = {
             'Max': {'color': '#e74c3c', 'linestyle': '--'},
@@ -204,18 +206,18 @@ with tab1:
         st.pyplot(fig)
     
     with col_right:
-        st.subheader("Spatial Distribution (Mean)")
+        st.subheader("Spatial Distribution")
         try:
+            current_avg = filtered_df[group_data['Mean']].mean()
             overall_min = df[group_data['Mean']].min()
             overall_max = df[group_data['Mean']].max()
-            current_avg = filtered_df[group_data['Mean']].mean()
             norm_value = normalize_value(current_avg, overall_min, overall_max)
             
             fig, ax = plt.subplots(figsize=(6, 6))
             gdf = gpd.GeoDataFrame.from_features(geojson['features'])
             gdf.plot(ax=ax, facecolor=plt.get_cmap(COLORMAP_NAME)(norm_value), edgecolor='black')
             ax.set_axis_off()
-            ax.set_title(f"{selected_group} Intensity")
+            ax.set_title(f"Mean {selected_group} Intensity")
             st.pyplot(fig)
         except Exception as e:
             st.error(f"Map error: {str(e)}")
@@ -223,11 +225,11 @@ with tab1:
 # --- Tab2: Temporal Analysis ---
 with tab2:
     st.title("⏳ Temporal Analysis")
-    selected_group = group_selector()
+    selected_group = group_selector(key_suffix="temporal")
     group_data = param_groups[selected_group]
     
-    st.subheader(f"Detailed {selected_group.replace('_', ' ').title()} Analysis")
-    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7, key='tab2_window')
+    st.subheader(f"Detailed Analysis: {selected_group.replace('_', ' ').title()}")
+    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7, key='temporal_window')
     
     ts_data = df.set_index('Date')[list(group_data.values())].rolling(window=window_size).mean()
     
@@ -250,20 +252,20 @@ with tab2:
 # --- Tab3: Statistical Tests ---
 with tab3:
     st.title("📊 Statistical Testing")
-    selected_group = group_selector()
+    selected_group = group_selector(key_suffix="stats")
     group_data = param_groups[selected_group]
     
-    test_type = st.selectbox("Select Test", ["T-Test", "ANOVA", "Regression"])
+    test_type = st.selectbox("Select Test", ["T-Test", "ANOVA", "Regression"], key='test_type')
     
     if test_type == "T-Test":
         col1, col2 = st.columns(2)
         with col1:
-            variable = st.selectbox("Variable", list(group_data.values()))
+            variable = st.selectbox("Variable", list(group_data.values()), key='ttest_var')
         with col2:
             valid_group_vars = [col for col in df.columns if df[col].nunique() == 2]
-            group_var = st.selectbox("Group Variable", valid_group_vars)
+            group_var = st.selectbox("Group Variable", valid_group_vars, key='ttest_group')
         
-        if st.button("Run T-Test"):
+        if st.button("Run T-Test", key='ttest_btn'):
             result, error = run_ttest(df, variable, group_var)
             if error:
                 st.error(error)
@@ -280,10 +282,10 @@ with tab3:
                 st.pyplot(fig)
     
     elif test_type == "ANOVA":
-        variable = st.selectbox("Variable", list(group_data.values()))
-        group_var = st.selectbox("Group Variable", df.columns)
+        variable = st.selectbox("Variable", list(group_data.values()), key='anova_var')
+        group_var = st.selectbox("Group Variable", df.columns, key='anova_group')
         
-        if st.button("Run ANOVA"):
+        if st.button("Run ANOVA", key='anova_btn'):
             result, error = run_anova(df, variable, group_var)
             if error:
                 st.error(error)
@@ -300,11 +302,11 @@ with tab3:
     elif test_type == "Regression":
         col1, col2 = st.columns(2)
         with col1:
-            x_var = st.selectbox("Independent Variable", list(group_data.values()))
+            x_var = st.selectbox("Independent Variable", list(group_data.values()), key='reg_x')
         with col2:
-            y_var = st.selectbox("Dependent Variable", list(group_data.values()))
+            y_var = st.selectbox("Dependent Variable", list(group_data.values()), key='reg_y')
         
-        if st.button("Run Regression"):
+        if st.button("Run Regression", key='reg_btn'):
             model, error = run_regression(df, x_var, y_var)
             if error:
                 st.error(error)
