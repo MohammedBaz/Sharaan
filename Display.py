@@ -208,11 +208,6 @@ def run_regression(data, x_var, y_var):
         return model, None
     except Exception as e: return None, f"Regression failed: {str(e)}"
 
-# --- CSV Conversion Function ---
-# @st.cache_data # This function is no longer used, can be removed or kept for future use
-# def convert_df_to_csv(df_to_convert):
-#   """Converts a Pandas DataFrame to CSV bytes."""
-#   return df_to_convert.to_csv(index=False).encode('utf-8')
 
 # --- PDF Generation Function ---
 def create_dashboard_pdf(param_name, fig, stats_dict):
@@ -227,9 +222,14 @@ def create_dashboard_pdf(param_name, fig, stats_dict):
     pdf.set_font("Helvetica", "B", 12)
     pdf.cell(0, 10, "Overall Statistics:", 0, 1)
     pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, f"  - Maximum: {stats_dict['max']:.2f}", 0, 1)
-    pdf.cell(0, 8, f"  - Average: {stats_dict['mean']:.2f}", 0, 1)
-    pdf.cell(0, 8, f"  - Minimum: {stats_dict['min']:.2f}", 0, 1)
+    # Ensure stats_dict values are not NaN before formatting
+    max_stat = f"{stats_dict['max']:.2f}" if not pd.isna(stats_dict['max']) else "N/A"
+    mean_stat = f"{stats_dict['mean']:.2f}" if not pd.isna(stats_dict['mean']) else "N/A"
+    min_stat = f"{stats_dict['min']:.2f}" if not pd.isna(stats_dict['min']) else "N/A"
+
+    pdf.cell(0, 8, f"  - Maximum: {max_stat}", 0, 1)
+    pdf.cell(0, 8, f"  - Average: {mean_stat}", 0, 1)
+    pdf.cell(0, 8, f"  - Minimum: {min_stat}", 0, 1)
     pdf.ln(10)
 
     # Add Plot
@@ -249,8 +249,11 @@ def create_dashboard_pdf(param_name, fig, stats_dict):
     img_buffer.close()
 
     # Return PDF as bytes
-    # **FIX:** pdf.output(dest='S') already returns bytes (or bytearray for Python 3)
-    return pdf.output(dest='S')
+    # **FIX:** Convert bytearray (if returned by FPDF) to bytes
+    pdf_output = pdf.output(dest='S')
+    if isinstance(pdf_output, bytearray):
+        return bytes(pdf_output)
+    return pdf_output # Assuming it's already bytes if not bytearray
 
 
 # --- Load Data ---
@@ -267,15 +270,6 @@ pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
 selected_page = st.sidebar.radio("Go to", pages)
 
 # --- REMOVED Download Button for Full CSV from Sidebar ---
-# st.sidebar.markdown("---")
-# csv_data = convert_df_to_csv(df)
-# st.sidebar.download_button(
-#    label="📥 Download Full Data (CSV)",
-#    data=csv_data,
-#    file_name='ecomonitor_full_data.csv',
-#    mime='text/csv',
-#    key='download_csv_all'
-# )
 
 
 # --- Main Page Content (Conditional Display) ---
@@ -358,18 +352,24 @@ elif selected_page == "Dashboard":
             st.markdown("---", unsafe_allow_html=True)
             stats_for_pdf = {'max': overall_max_val, 'mean': overall_mean_val, 'min': overall_min_val}
             try:
-                pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
-                st.download_button(
-                    label="📄 Download Dashboard as PDF",
-                    data=pdf_bytes,
-                    file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
-                    mime="application/pdf",
-                    key='download_pdf_dashboard' # Added key
-                )
+                # Ensure fig_line is available and not None
+                if 'fig_line' in locals() and fig_line is not None:
+                    pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
+                    st.download_button(
+                        label="📄 Download Dashboard as PDF",
+                        data=pdf_bytes,
+                        file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
+                        mime="application/pdf",
+                        key='download_pdf_dashboard' # Added key
+                    )
+                else:
+                    st.error("Plot figure not available for PDF generation.")
             except Exception as pdf_e:
                 st.error(f"Failed to generate PDF: {pdf_e}")
             finally:
-                 plt.close(fig_line) # Close the figure to free memory
+                 # Close the figure to free memory, only if it was created
+                 if 'fig_line' in locals() and fig_line is not None:
+                    plt.close(fig_line)
 
         else:
             st.warning("No data available for the selected parameter group.")
