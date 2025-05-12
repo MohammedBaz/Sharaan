@@ -207,7 +207,7 @@ with col_plot:
 
 
 with col_map:
-    # *** Updated Subheader and Markdown Text ***
+    # *** Updated Subheader and Markdown Text for Average Value ***
     st.subheader("🗺️ Area Climate Intensity")
     st.markdown(f"Color represents the **normalized average value** of **{selected_var}** for the period (Colormap: {COLORMAP_NAME}).")
 
@@ -215,7 +215,6 @@ with col_map:
     if not gdf_map.empty:
         try:
             # *** Calculate Average Value for the period ***
-            # Use the pre-filtered filtered_var_data
             period_avg_value = filtered_var_data.mean() if not filtered_var_data.empty else np.nan
 
             # Get overall min/max for the selected variable from the *entire* dataset
@@ -245,7 +244,7 @@ with col_map:
             ax_map.set_yticks([])
             ax_map.set_xlabel('')
             ax_map.set_ylabel('')
-            # *** Updated Map Title ***
+            # *** Updated Map Title for Average Value ***
             ax_map.set_title(f'Avg {selected_var} Intensity', fontsize=10)
             for spine in ax_map.spines.values():
                 spine.set_visible(False)
