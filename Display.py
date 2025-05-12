@@ -26,20 +26,35 @@ VIDEO_CONFIG = {"autoplay": False, "muted": True, "loop": False}
 
 # --- Custom CSS Styling ---
 # Apply custom styles to the Streamlit app elements for better aesthetics
-# This st.markdown call now correctly comes *after* st.set_page_config
 st.markdown("""
     <style>
         /* Style the main background */
-        .main {background-color: #f8f9fa;}
+        .main { background-color: #f8f9fa; padding: 1rem; }
         /* Style the video player */
-        .stVideo {border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);}
+        .stVideo { border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
         /* Style containers (used for metrics) */
-        .css-1aumxhk, .metric-container {background-color: #ffffff; border-radius: 10px; padding: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}
-        /* Style the main title */
-        h1 {color: #2c3e50;}
+        .metric-container {
+            background-color: #ffffff;
+            border-radius: 10px;
+            padding: 15px 20px; /* Adjusted padding */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            margin-bottom: 10px;
+            text-align: center; /* Center align metric text */
+        }
+        /* Style the main titles */
+        h1, h2 { color: #2c3e50; }
+        /* Style subheaders */
+        h3 { color: #34495e; margin-top: 1rem; margin-bottom: 0.5rem;}
         /* Specific styling for metric containers */
-        .metric-container {padding: 15px; margin-bottom: 10px;}
-        .metric-container h2 {margin-top: 5px;} /* Adjust spacing for metric value */
+        .metric-container h2 { margin-top: 5px; margin-bottom: 5px; font-size: 2em;} /* Adjust spacing & size */
+        .metric-container span { font-size: 0.9em; color: #555; }
+        /* Ensure plots have some breathing room */
+        .stPlotlyChart, .stpyplot { margin-bottom: 1rem; }
+        /* Style tabs */
+        .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+        .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 4px 4px 0 0; gap: 8px; padding-top: 10px; padding-bottom: 10px;}
+        .stTabs [aria-selected="true"] { background-color: #ffffff; }
+
     </style>
 """, unsafe_allow_html=True)
 
@@ -57,7 +72,6 @@ def load_data():
 
         # Check if any dates failed to parse
         if df['Date'].isnull().any():
-            # **CORRECTION:** Fixed the error message to be more informative and avoid undefined variable.
             st.error("Error: Some date values could not be parsed. Please check the 'Date' column format in the CSV.")
             st.stop() # Stop the app execution if dates are invalid
 
@@ -85,7 +99,8 @@ def load_geojson():
         # Create a GeoDataFrame from the GeoJSON features
         gdf = gpd.GeoDataFrame.from_features(geojson['features'])
         # Ensure geometries are valid; buffer by 0 if not (common fix for invalid polygons)
-        gdf.geometry = gdf.geometry.buffer(0) if not gdf.geometry.is_valid.all() else gdf.geometry
+        if not gdf.geometry.is_valid.all():
+             gdf.geometry = gdf.geometry.buffer(0)
         # Return the raw GeoJSON and the combined geometry of all features
         return geojson, gdf.geometry.unary_union
     except Exception as e:
@@ -113,7 +128,8 @@ def get_parameter_groups(df):
                     # Store the full column name under the corresponding key ('Max', 'Min', 'Mean')
                     groups[parameter][prefix] = col
     # Filter out any groups that don't have all three (Max, Min, Mean) columns
-    return {param: data for param, data in groups.items() if all(k in data for k in ['Max', 'Min', 'Mean'])}
+    # Also ensure the parameter name itself isn't empty
+    return {param: data for param, data in groups.items() if param and all(k in data for k in ['Max', 'Min', 'Mean'])}
 
 
 def normalize_value(value, overall_min, overall_max):
@@ -128,34 +144,47 @@ def normalize_value(value, overall_min, overall_max):
 # --- Statistical Functions ---
 def run_ttest(data, variable, group_var):
     """Performs an independent two-sample t-test."""
+    # Drop NaNs in grouping variable for accurate unique check
     groups = data[group_var].dropna().unique()
     # Check if exactly two groups are present
     if len(groups) != 2:
         return None, f"T-Test requires exactly two groups. Found {len(groups)} for '{group_var}'."
-    # Prepare data for each group
-    group_data = [data[data[group_var] == grp][variable].dropna() for grp in groups]
-    # Check if each group has sufficient data points
+    # Prepare data for each group, dropping NaNs in the variable of interest
+    group_data = [data.loc[data[group_var] == grp, variable].dropna() for grp in groups]
+    # Check if each group has sufficient data points *after* dropping NaNs
     if any(len(d) < 3 for d in group_data):
-        return None, f"T-Test requires at least 3 valid samples per group for '{variable}'. Check for missing data."
+        return None, f"T-Test requires at least 3 valid (non-NaN) samples per group for '{variable}'. Check data for selected groups."
     # Perform the t-test
     try:
-        t_stat, p_value = stats.ttest_ind(*group_data, nan_policy='omit') # Omit NaNs within groups
+        # Use nan_policy='omit' which is generally safer if NaNs weren't fully handled before
+        t_stat, p_value = stats.ttest_ind(*group_data, nan_policy='omit')
         return (t_stat, p_value), None
     except Exception as e:
         return None, f"T-Test failed: {str(e)}"
 
 def run_anova(data, variable, group_var):
     """Performs a one-way ANOVA test."""
-    # Check if at least two groups are present
-    if data[group_var].nunique() < 2:
-        return None, f"ANOVA requires at least two groups for '{group_var}'."
+    # Drop NaNs in grouping variable for accurate unique check
+    if data[group_var].dropna().nunique() < 2:
+        return None, f"ANOVA requires at least two distinct groups for '{group_var}'."
     try:
+        # Prepare data by dropping rows where *either* variable or group_var is NaN
+        clean_data = data.dropna(subset=[variable, group_var])
+        if clean_data[group_var].nunique() < 2:
+             return None, f"After removing missing values, fewer than two groups remain for '{group_var}'."
+        # Check if variable has variance within groups
+        if clean_data.groupby(group_var)[variable].nunique().min() == 0:
+             return None, f"The variable '{variable}' has no variation within at least one group of '{group_var}'."
+
         # Fit the Ordinary Least Squares (OLS) model
         # Use backticks to handle potential special characters in column names
-        model = ols(f'`{variable}` ~ C(`{group_var}`)', data=data.dropna(subset=[variable, group_var])).fit()
+        model = ols(f'`{variable}` ~ C(`{group_var}`)', data=clean_data).fit()
         # Perform ANOVA on the fitted model
         anova_table = sm.stats.anova_lm(model, typ=2)
         return anova_table, None
+    except ValueError as ve:
+         # Catch specific errors like "endog has insufficient variation"
+         return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(ve)}"
     except Exception as e:
         return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(e)}"
 
@@ -168,8 +197,12 @@ def run_regression(data, x_var, y_var):
         if len(data_clean) < 10:
             return None, f"Regression requires at least 10 non-missing data points for '{x_var}' and '{y_var}'. Found {len(data_clean)}."
         # Check if the independent variable has variance
-        if data_clean[x_var].nunique() == 1:
-            return None, f"Independent variable '{x_var}' has no variation (all values are the same)."
+        if data_clean[x_var].nunique() < 2: # Need at least 2 unique points for regression
+            return None, f"Independent variable '{x_var}' has insufficient variation (needs at least 2 unique values)."
+        # Check if the dependent variable has variance
+        if data_clean[y_var].nunique() < 2:
+             return None, f"Dependent variable '{y_var}' has insufficient variation (needs at least 2 unique values)."
+
         # Add a constant (intercept) to the independent variable
         X = sm.add_constant(data_clean[x_var])
         # Fit the OLS regression model
@@ -199,17 +232,17 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(tabs)
 with tab1:
     st.title("🌳 Sharaan Vegetation Dynamics Monitor")
     st.markdown("Visualizing changes in vegetation cover over time within the Sharaan Nature Reserve.")
-    # Center the video using columns
-    col1, col2, col3 = st.columns([1, 8, 1]) # Adjust ratios as needed
+    # Center the video using columns for better control over width
+    col1, col2, col3 = st.columns([1, 5, 1]) # Give more space to the middle column
     with col2:
         try:
             # Attempt to open and display the video file
             with open(VIDEO_PATH, 'rb') as video_file:
                 video_bytes = video_file.read()
             st.video(video_bytes, format="video/mp4", start_time=0, **VIDEO_CONFIG)
-            st.caption("This animation illustrates the fluctuations in vegetation indices derived from satellite imagery.")
+            st.caption("Animation illustrating fluctuations in vegetation indices derived from satellite imagery.")
         except FileNotFoundError:
-            st.error(f"Error: Video file not found at '{VIDEO_PATH}'. Please ensure the video file is in the correct location.")
+            st.error(f"Error: Video file not found at '{VIDEO_PATH}'. Please ensure the video file is in the correct location relative to the script.")
         except Exception as e:
             st.error(f"Error loading video: {str(e)}")
 
@@ -218,9 +251,11 @@ with tab2:
     st.title("📊 Climate & Environmental Dashboard")
     st.markdown("Explore trends and spatial patterns of key environmental parameters.")
 
-    # Sidebar for user selections
-    with st.sidebar:
-        st.header("Dashboard Controls")
+    # --- **MODIFICATION:** Moved Controls from Sidebar to Tab 2 ---
+    st.subheader("Dashboard Controls")
+    control_col1, control_col2 = st.columns(2) # Arrange controls side-by-side
+
+    with control_col1:
         # Ensure param_groups is not empty before creating selectbox
         if param_groups:
             groups_list = sorted(param_groups.keys())
@@ -228,13 +263,14 @@ with tab2:
             selected_group_key = st.selectbox(
                 "Select Parameter Group",
                 groups_list,
-                key="dashboard_group_select",
+                key="dashboard_group_select", # Keep key consistent if state needs to be preserved
                 index=0 # Default to the first group
             )
         else:
             st.warning("No parameter groups available.")
             selected_group_key = None # Set to None if no groups
 
+    with control_col2:
         # Date range input
         min_date = df['Date'].min().date()
         max_date = df['Date'].max().date()
@@ -243,10 +279,12 @@ with tab2:
             value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
-            key="dashboard_date_range"
+            key="dashboard_date_range" # Keep key consistent
         )
+    st.markdown("---") # Add a separator after controls
 
-    # Filter data based on sidebar selections
+    # --- Data Filtering and Display ---
+    # Filter data based on selections made in the controls above
     if selected_group_key and len(selected_date_range) == 2:
         group_cols_info = param_groups[selected_group_key]
         start_date, end_date = pd.to_datetime(selected_date_range[0]), pd.to_datetime(selected_date_range[1])
@@ -256,12 +294,15 @@ with tab2:
             st.error("Error: Start date cannot be after end date.")
             filtered_df = pd.DataFrame() # Empty DataFrame
         else:
-             filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy() # Use .copy() to avoid SettingWithCopyWarning
+             # Filter the main dataframe
+             filtered_df = df[(df['Date'] >= start_date) & (df['Date'] <= end_date)].copy() # Use .copy()
 
-        # Display metrics if data is available
+        # Display metrics and plots if data is available for the selection
         if not filtered_df.empty:
             st.subheader(f"Summary for {selected_group_key.replace('_', ' ').title()} ({selected_date_range[0]} to {selected_date_range[1]})")
-            cols = st.columns(3)
+
+            # Display Metrics
+            metric_cols = st.columns(3) # Use 3 columns for metrics
             metrics_data = {
                 'MAX': filtered_df[group_cols_info['Max']].max(),
                 'MIN': filtered_df[group_cols_info['Min']].min(),
@@ -270,35 +311,40 @@ with tab2:
             metric_labels = {'MAX': 'Maximum', 'MIN': 'Minimum', 'AVG': 'Average'}
 
             for i, (label, value) in enumerate(metrics_data.items()):
-                with cols[i]:
+                with metric_cols[i]:
                     # Use custom HTML for styled metric display
                     st.markdown(f"""
                         <div class="metric-container">
-                            <span style="font-size: 0.9em; color: #555;">{metric_labels[label]}</span>
+                            <span>{metric_labels[label]}</span>
                             <h2>{value:.2f}</h2>
                         </div>
                     """, unsafe_allow_html=True)
 
+            st.markdown("---") # Separator before plots
+
             # Visualizations
             st.subheader("Visualizations")
-            col1, col2 = st.columns([2, 1]) # Allocate more space for the line chart
+            # **OPTIMIZATION:** Adjust column ratios for better plot spacing
+            vis_col1, vis_col2 = st.columns([3, 2]) # Give more space to the line chart
 
             # Line chart for trends over time
-            with col1:
-                fig_line, ax_line = plt.subplots(figsize=(10, 4))
+            with vis_col1:
+                fig_line, ax_line = plt.subplots(figsize=(10, 5)) # Slightly larger figure
                 for prefix in ['Max', 'Mean', 'Min']:
-                    col_name = group_cols_info[prefix]
-                    sns.lineplot(data=filtered_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=3, linestyle='-')
-                ax_line.set_title(f"{selected_group_key.replace('_', ' ').title()} Trend")
-                ax_line.set_ylabel(selected_group_key.replace('_', ' '))
-                ax_line.set_xlabel("Date")
+                    if prefix in group_cols_info: # Check if key exists
+                        col_name = group_cols_info[prefix]
+                        sns.lineplot(data=filtered_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=4, linestyle='-')
+                ax_line.set_title(f"{selected_group_key.replace('_', ' ').title()} Trend", fontsize=14)
+                ax_line.set_ylabel(selected_group_key.replace('_', ' '), fontsize=12)
+                ax_line.set_xlabel("Date", fontsize=12)
                 ax_line.legend(title="Statistic")
                 ax_line.grid(True, linestyle='--', alpha=0.6)
-                plt.xticks(rotation=45)
+                plt.xticks(rotation=30, ha='right') # Adjust rotation
+                plt.tight_layout() # Adjust layout
                 st.pyplot(fig_line)
 
             # Geographical map showing average intensity
-            with col2:
+            with vis_col2:
                 st.markdown("**Average Intensity Map**")
                 if geojson and sharaan_boundary: # Check if GeoJSON was loaded successfully
                     try:
@@ -311,7 +357,7 @@ with tab2:
                         normalized_mean = normalize_value(current_mean_value, overall_min, overall_max)
 
                         # Create the map plot
-                        fig_map, ax_map = plt.subplots(1, 1, figsize=(6, 6))
+                        fig_map, ax_map = plt.subplots(1, 1, figsize=(6, 6)) # Maintain square aspect
                         # Create a GeoDataFrame for plotting
                         map_gdf = gpd.GeoDataFrame([1], geometry=[sharaan_boundary], crs="EPSG:4326") # Assuming WGS84
                         # Plot the GeoDataFrame with color based on normalized value
@@ -319,10 +365,11 @@ with tab2:
                             ax=ax_map,
                             facecolor=plt.get_cmap('viridis')(normalized_mean), # Use viridis colormap
                             edgecolor='black',
-                            linewidth=0.5
+                            linewidth=0.7
                         )
                         ax_map.set_axis_off() # Hide axes
-                        ax_map.set_title(f"Avg. {selected_group_key.replace('_', ' ')}\nValue: {current_mean_value:.2f}", fontsize=10)
+                        ax_map.set_title(f"Avg. {selected_group_key.replace('_', ' ')}\nValue: {current_mean_value:.2f}", fontsize=12)
+                        plt.tight_layout()
                         st.pyplot(fig_map)
                         st.caption(f"Color intensity represents the normalized average value ({current_mean_value:.2f}) compared to the overall historical range ({overall_min:.2f} - {overall_max:.2f}).")
                     except Exception as e:
@@ -331,9 +378,13 @@ with tab2:
                     st.warning("GeoJSON data not available, cannot display map.")
 
         else:
-            st.warning("No data available for the selected date range.")
+            st.warning("No data available for the selected date range and parameter group.")
     else:
-         st.warning("Please select a parameter group and a valid date range in the sidebar.")
+         # Handle cases where controls might not be fully selected yet
+         if not selected_group_key:
+             st.warning("Please select a parameter group using the controls above.")
+         elif len(selected_date_range) != 2:
+              st.warning("Please select a valid date range using the controls above.")
 
 
 # --- Tab3: Correlation Analysis ---
@@ -341,8 +392,9 @@ with tab3:
     st.title("🔗 Cross-Parameter Correlation Analysis")
     st.markdown("Explore relationships between different environmental parameters (Max, Min, Mean values).")
 
-    # Exclude the group currently selected in the dashboard for clarity
-    excluded_group = st.session_state.get("dashboard_group_select", None) # Get selection from dashboard
+    # Exclude the group currently selected in the dashboard for clarity, if selected
+    # Use the key from the selectbox in Tab 2
+    excluded_group = st.session_state.get("dashboard_group_select", None)
     available_groups = sorted([p for p in param_groups.keys() if p != excluded_group])
 
     if len(available_groups) >= 2:
@@ -351,31 +403,43 @@ with tab3:
             "Select parameters to correlate (select at least 2)",
             available_groups,
             default=available_groups[:min(len(available_groups), 3)], # Default to first 2 or 3
-            key="correlation_params_select"
+            key="correlation_params_select" # Keep key consistent
         )
 
         if len(selected_corr_groups) >= 2:
             # Collect the relevant column names (Max, Min, Mean for each selected group)
             corr_vars_cols = []
             corr_labels = []
+            valid_selection = True
             for p_group in selected_corr_groups:
+                # Ensure the selected group still exists in param_groups (safety check)
+                if p_group not in param_groups:
+                    st.warning(f"Parameter group '{p_group}' seems invalid. Skipping.")
+                    valid_selection = False
+                    continue
                 for stat_type in ['Max', 'Min', 'Mean']:
-                    # Check if the specific stat type exists for the group (it should based on get_parameter_groups logic)
+                    # Check if the specific stat type exists for the group
                     if stat_type in param_groups[p_group]:
                          col_name = param_groups[p_group][stat_type]
                          corr_vars_cols.append(col_name)
                          # Create shorter labels for the heatmap axes
-                         corr_labels.append(f"{p_group[:10]}\n({stat_type})") # Abbreviate group name if long
+                         label_text = p_group.replace('_', ' ').title() # Make label more readable
+                         corr_labels.append(f"{label_text[:15]}\n({stat_type})") # Abbreviate group name if long
                     else:
-                        st.warning(f"Missing '{stat_type}' column for parameter group '{p_group}'. Skipping.")
+                        # This case should ideally not happen due to get_parameter_groups logic, but good to check
+                        st.warning(f"Missing '{stat_type}' column for parameter group '{p_group}'. Skipping this stat.")
+                        valid_selection = False
 
 
-            if corr_vars_cols: # Proceed only if we have columns to correlate
-                # Calculate the correlation matrix
+            if corr_vars_cols and valid_selection and len(corr_vars_cols) > 1: # Need at least 2 valid columns
+                # Calculate the correlation matrix for valid columns
                 correlation_matrix = df[corr_vars_cols].corr()
 
                 # Plot the heatmap
-                fig_corr, ax_corr = plt.subplots(figsize=(max(8, len(corr_vars_cols)*0.8), max(6, len(corr_vars_cols)*0.7))) # Adjust size dynamically
+                # **OPTIMIZATION:** Adjust figsize dynamically based on number of variables
+                fig_width = max(8, len(corr_vars_cols) * 0.9)
+                fig_height = max(6, len(corr_vars_cols) * 0.8)
+                fig_corr, ax_corr = plt.subplots(figsize=(fig_width, fig_height))
                 sns.heatmap(
                     correlation_matrix,
                     annot=True,       # Show correlation values
@@ -385,19 +449,22 @@ with tab3:
                     linecolor='lightgray',
                     ax=ax_corr,
                     xticklabels=corr_labels, # Use generated labels
-                    yticklabels=corr_labels
+                    yticklabels=corr_labels,
+                    annot_kws={"size": 9} # Adjust annotation font size
                 )
                 ax_corr.set_title("Correlation Matrix Heatmap", fontsize=14)
-                plt.xticks(rotation=45, ha='right', fontsize=9) # Rotate x-axis labels for readability
-                plt.yticks(rotation=0, fontsize=9)
-                plt.tight_layout() # Adjust layout to prevent labels overlapping
+                plt.xticks(rotation=45, ha='right', fontsize=10) # Adjust font size
+                plt.yticks(rotation=0, fontsize=10) # Adjust font size
+                plt.tight_layout(pad=2.0) # Adjust layout padding
                 st.pyplot(fig_corr)
-            else:
-                st.warning("No valid columns found for the selected parameters to generate a correlation matrix.")
+            elif len(corr_vars_cols) <= 1:
+                 st.warning("Not enough valid columns found for the selected parameters to generate a correlation matrix (need at least 2).")
+            # else: handled by the st.info below if selection < 2 initially
+
         else:
             st.info("Please select at least 2 parameter groups to calculate correlations.")
     else:
-        st.warning("Not enough parameter groups available (minimum 2 required) to perform correlation analysis.")
+        st.warning("Not enough parameter groups available (minimum 2 required) to perform correlation analysis, possibly due to the parameter selected on the Dashboard tab being excluded.")
 
 
 # --- Tab4: Temporal Analysis ---
@@ -406,63 +473,77 @@ with tab4:
     st.markdown("Smooth out short-term fluctuations to observe longer-term trends using rolling averages.")
 
     if param_groups:
-        # Selectbox for parameter group
-        temporal_group_key = st.selectbox(
-            "Select Parameter Group",
-            sorted(param_groups.keys()),
-            key="temporal_group_select"
-        )
-        # Slider for rolling window size
-        rolling_window_days = st.slider(
-            "Select Rolling Window Size (days)",
-            min_value=1,
-            max_value=90, # Adjust max window size if needed
-            value=7,      # Default to 7 days
-            step=1,
-            key="temporal_window_slider"
-        )
+        col1_temp, col2_temp = st.columns([1,1]) # Columns for controls
+
+        with col1_temp:
+            # Selectbox for parameter group
+            temporal_group_key = st.selectbox(
+                "Select Parameter Group",
+                sorted(param_groups.keys()),
+                key="temporal_group_select"
+            )
+        with col2_temp:
+            # Slider for rolling window size
+            rolling_window_days = st.slider(
+                "Select Rolling Window Size (days)",
+                min_value=1,
+                max_value=90, # Adjust max window size if needed
+                value=7,      # Default to 7 days
+                step=1,
+                key="temporal_window_slider"
+            )
+        st.markdown("---")
 
         if temporal_group_key:
-            group_cols_info = param_groups[temporal_group_key]
-            # Prepare data, setting Date as index
-            ts_data = df.set_index('Date')[[
-                group_cols_info['Max'],
-                group_cols_info['Mean'],
-                group_cols_info['Min']
-            ]].copy() # Select the relevant columns
+            # Ensure selected key is valid
+            if temporal_group_key not in param_groups:
+                 st.error(f"Selected parameter group '{temporal_group_key}' is invalid.")
+            else:
+                group_cols_info = param_groups[temporal_group_key]
+                # Prepare data, setting Date as index
+                required_cols = [group_cols_info[stat] for stat in ['Max', 'Mean', 'Min'] if stat in group_cols_info]
 
-            # Calculate rolling mean
-            ts_rolling_avg = ts_data.rolling(window=f'{rolling_window_days}D').mean() # Use 'D' for days
+                if len(required_cols) == 3: # Ensure all Max, Mean, Min columns exist
+                    ts_data = df.set_index('Date')[required_cols].copy() # Select the relevant columns
 
-            # Plotting
-            fig_temporal, ax_temporal = plt.subplots(figsize=(12, 5))
+                    # Calculate rolling mean using a time window string
+                    ts_rolling_avg = ts_data.rolling(window=f'{rolling_window_days}D', min_periods=1).mean() # Use 'D' for days, min_periods=1 to show partial windows
 
-            # Plot rolling Max, Mean, Min lines
-            for col in ts_rolling_avg.columns:
-                prefix = col.split('_')[0] # Get 'Max', 'Mean', or 'Min'
-                sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal)
+                    # Plotting
+                    fig_temporal, ax_temporal = plt.subplots(figsize=(12, 5)) # Good default size
 
-            # Fill between rolling Min and Max
-            min_col = group_cols_info['Min']
-            max_col = group_cols_info['Max']
-            if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
-                 ax_temporal.fill_between(
-                     ts_rolling_avg.index,
-                     ts_rolling_avg[min_col], # Rolling Min
-                     ts_rolling_avg[max_col], # Rolling Max
-                     alpha=0.15,              # Transparency
-                     color='gray',
-                     label='Min-Max Range (Rolling Avg)'
-                 )
+                    # Plot rolling Max, Mean, Min lines
+                    for col in ts_rolling_avg.columns:
+                        # Extract prefix ('Max', 'Mean', 'Min') reliably
+                        prefix = col.split('_')[0]
+                        if prefix in ['Max', 'Mean', 'Min']:
+                            sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal)
 
-            ax_temporal.set_title(f"{temporal_group_key.replace('_', ' ').title()} - {rolling_window_days}-Day Rolling Statistics")
-            ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '))
-            ax_temporal.set_xlabel("Date")
-            ax_temporal.legend(loc='upper left', bbox_to_anchor=(1, 1)) # Place legend outside plot
-            ax_temporal.grid(True, linestyle='--', alpha=0.6)
-            plt.tight_layout()
-            st.pyplot(fig_temporal)
+                    # Fill between rolling Min and Max
+                    min_col = group_cols_info.get('Min')
+                    max_col = group_cols_info.get('Max')
+                    if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
+                         ax_temporal.fill_between(
+                             ts_rolling_avg.index,
+                             ts_rolling_avg[min_col], # Rolling Min
+                             ts_rolling_avg[max_col], # Rolling Max
+                             alpha=0.15,              # Transparency
+                             color='gray',
+                             label='Min-Max Range (Rolling Avg)'
+                         )
+
+                    ax_temporal.set_title(f"{temporal_group_key.replace('_', ' ').title()} - {rolling_window_days}-Day Rolling Statistics", fontsize=14)
+                    ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '), fontsize=12)
+                    ax_temporal.set_xlabel("Date", fontsize=12)
+                    # **OPTIMIZATION:** Adjust legend position
+                    ax_temporal.legend(loc='best') # Let matplotlib decide best location
+                    ax_temporal.grid(True, linestyle='--', alpha=0.6)
+                    plt.tight_layout()
+                    st.pyplot(fig_temporal)
+                else:
+                    st.warning(f"Missing one or more required columns (Max, Mean, Min) for parameter group '{temporal_group_key}'. Cannot generate plot.")
         else:
+            # Should not happen if selectbox has a default, but good practice
             st.warning("Please select a parameter group.")
     else:
         st.warning("No parameter groups available for temporal analysis.")
@@ -489,11 +570,16 @@ with tab5:
         col1, col2 = st.columns(2)
         with col1:
             # Select the numeric variable to compare
-            t_test_variable = st.selectbox(
-                "Select Variable (Numeric)",
-                df.select_dtypes(include=np.number).columns,
-                key="ttest_variable_select"
-            )
+            numeric_vars_ttest = df.select_dtypes(include=np.number).columns.tolist()
+            if not numeric_vars_ttest:
+                 st.warning("No numeric variables found in the data for T-Test.")
+                 t_test_variable = None
+            else:
+                t_test_variable = st.selectbox(
+                    "Select Variable (Numeric)",
+                    numeric_vars_ttest,
+                    key="ttest_variable_select"
+                )
         with col2:
             # Find columns suitable for grouping (exactly 2 unique non-null values)
             potential_group_vars = [c for c in df.columns if df[c].dropna().nunique() == 2]
@@ -508,21 +594,29 @@ with tab5:
                  t_test_group_var = None
 
         # Button to run the test
-        if t_test_group_var and st.button("Run T-Test", key="ttest_run_button"):
-            result, error_msg = run_ttest(df, t_test_variable, t_test_group_var)
-            if error_msg:
-                st.error(f"T-Test Error: {error_msg}")
-            elif result:
-                t_stat, p_value = result
-                st.metric("T-Statistic", f"{t_stat:.3f}")
-                st.metric("P-Value", f"{p_value:.4f}")
-                alpha = 0.05 # Significance level
-                if p_value < alpha:
-                    st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in '{t_test_variable}' between the two groups of '{t_test_group_var}'.")
+        if t_test_variable and t_test_group_var:
+             if st.button("Run T-Test", key="ttest_run_button"):
+                result, error_msg = run_ttest(df, t_test_variable, t_test_group_var)
+                if error_msg:
+                    st.error(f"T-Test Error: {error_msg}")
+                elif result:
+                    t_stat, p_value = result
+                    res_col1, res_col2 = st.columns(2)
+                    with res_col1:
+                        st.metric("T-Statistic", f"{t_stat:.3f}")
+                    with res_col2:
+                        st.metric("P-Value", f"{p_value:.4g}") # Use general format for p-value
+
+                    alpha = 0.05 # Significance level
+                    if p_value < alpha:
+                        st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in the mean of '{t_test_variable}' between the two groups defined by '{t_test_group_var}'.")
+                    else:
+                        st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in the mean of '{t_test_variable}' between the two groups defined by '{t_test_group_var}'.")
                 else:
-                    st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in '{t_test_variable}' between the two groups of '{t_test_group_var}'.")
-            else:
-                st.error("T-Test failed to produce results.")
+                    st.error("T-Test failed to produce results for an unknown reason.")
+        else:
+             st.info("Please select both a numeric variable and a grouping variable with exactly two groups.")
+
 
     # --- ANOVA Section ---
     elif "ANOVA" in test_type:
@@ -531,55 +625,58 @@ with tab5:
         col1, col2 = st.columns(2)
         with col1:
             # Select the numeric variable
-            anova_variable = st.selectbox(
-                "Select Variable (Numeric)",
-                df.select_dtypes(include=np.number).columns,
-                key="anova_variable_select"
-            )
+            numeric_vars_anova = df.select_dtypes(include=np.number).columns.tolist()
+            if not numeric_vars_anova:
+                 st.warning("No numeric variables found in the data for ANOVA.")
+                 anova_variable = None
+            else:
+                anova_variable = st.selectbox(
+                    "Select Variable (Numeric)",
+                    numeric_vars_anova,
+                    key="anova_variable_select"
+                )
         with col2:
             # Select the grouping variable (can have more than 2 groups)
-            # Allow selection from all columns, but ANOVA function handles validation
-            anova_group_var = st.selectbox(
-                "Select Grouping Variable",
-                [c for c in df.columns if c != anova_variable and df[c].nunique() > 1], # Exclude variable itself and constant columns
-                key="anova_group_select"
-            )
+            # Exclude the variable itself and columns with only 1 unique value
+            potential_anova_groups = [c for c in df.columns if c != anova_variable and df[c].dropna().nunique() > 1]
+            if potential_anova_groups:
+                anova_group_var = st.selectbox(
+                    "Select Grouping Variable (2+ Groups)",
+                    potential_anova_groups,
+                    key="anova_group_select"
+                )
+            else:
+                 st.warning("No suitable grouping variables found (need columns with >1 unique value).")
+                 anova_group_var = None
+
 
         # Button to run ANOVA
-        if anova_variable and anova_group_var and st.button("Run ANOVA", key="anova_run_button"):
-            anova_results, error_msg = run_anova(df, anova_variable, anova_group_var)
-            if error_msg:
-                st.error(f"ANOVA Error: {error_msg}")
-            elif anova_results is not None:
-                st.write("ANOVA Results Table:")
-                # Display the ANOVA table, formatting p-value
-                st.dataframe(anova_results.style.format({'PR(>F)': '{:.4f}'}))
-                # Safely access p-value, check if 'PR(>F)' column exists and has values
-                if 'PR(>F)' in anova_results.columns and not anova_results['PR(>F)'].empty:
-                    p_value_anova = anova_results['PR(>F)'].iloc[0] # Get the p-value from the first row
-                    alpha = 0.05
-                    if p_value_anova < alpha:
-                        st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
-                        # Suggest Tukey's HSD for post-hoc analysis if significant
-                        if df[anova_group_var].nunique() > 2:
-                            st.info("Consider running a post-hoc test (like Tukey's HSD) to see which specific groups differ.")
-                            # Example of how to potentially add Tukey's HSD (optional, can be complex)
-                            # try:
-                            #     tukey_data = df[[anova_variable, anova_group_var]].dropna()
-                            #     if len(tukey_data) > 0: # Ensure data exists after dropping NaNs
-                            #         tukey = pairwise_tukeyhsd(endog=tukey_data[anova_variable], groups=tukey_data[anova_group_var], alpha=0.05)
-                            #         st.write("Tukey's HSD Post-Hoc Test Results:")
-                            #         st.dataframe(pd.DataFrame(data=tukey._results_table.data[1:], columns=tukey._results_table.data[0]))
-                            #     else:
-                            #         st.warning("Not enough data after handling missing values to run Tukey's HSD.")
-                            # except Exception as tukey_e:
-                            #     st.warning(f"Could not run Tukey's HSD: {tukey_e}")
+        if anova_variable and anova_group_var:
+            if st.button("Run ANOVA", key="anova_run_button"):
+                anova_results, error_msg = run_anova(df, anova_variable, anova_group_var)
+                if error_msg:
+                    st.error(f"ANOVA Error: {error_msg}")
+                elif anova_results is not None and not anova_results.empty:
+                    st.write("ANOVA Results Table:")
+                    # Display the ANOVA table, formatting p-value
+                    st.dataframe(anova_results.style.format({'PR(>F)': '{:.4g}'})) # Use general format
+                    # Safely access p-value, check if 'PR(>F)' column exists and has values
+                    if 'PR(>F)' in anova_results.columns and not anova_results['PR(>F)'].empty:
+                        p_value_anova = anova_results['PR(>F)'].iloc[0] # Get the p-value from the first row (group effect)
+                        alpha = 0.05
+                        if p_value_anova < alpha:
+                            st.success(f"Result is statistically significant (p < {alpha}). There is a significant difference in the mean of '{anova_variable}' across at least some of the groups defined by '{anova_group_var}'.")
+                            # Suggest Tukey's HSD for post-hoc analysis if significant and >2 groups
+                            if df[anova_group_var].dropna().nunique() > 2:
+                                st.info("Consider running a post-hoc test (like Tukey's HSD, not implemented here) to identify which specific groups differ significantly.")
+                        else:
+                            st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in the mean of '{anova_variable}' across the groups defined by '{anova_group_var}'.")
                     else:
-                        st.info(f"Result is not statistically significant (p >= {alpha}). There is no significant difference in '{anova_variable}' means across the groups defined by '{anova_group_var}'.")
+                         st.warning("Could not extract p-value from ANOVA results table.")
                 else:
-                     st.warning("Could not extract p-value from ANOVA results.")
-            else:
-                st.error("ANOVA failed to produce results.")
+                    st.error("ANOVA failed to produce results or the results table was empty.")
+        else:
+             st.info("Please select both a numeric variable and a grouping variable (with at least 2 groups).")
 
     # --- Regression Section ---
     elif "Regression" in test_type:
@@ -587,68 +684,94 @@ with tab5:
         st.markdown("Analyzes the linear relationship between two numeric variables.")
         col1, col2 = st.columns(2)
         numeric_cols_list = df.select_dtypes(include=np.number).columns.tolist()
-        with col1:
-            # Select the independent variable (X)
-            reg_x_variable = st.selectbox(
-                "Select Independent Variable (X)",
-                numeric_cols_list,
-                key="regression_x_select"
-            )
-        with col2:
-            # Select the dependent variable (Y)
-            # Ensure Y is different from X
-            available_y = [c for c in numeric_cols_list if c != reg_x_variable]
-            if available_y:
-                 reg_y_variable = st.selectbox(
-                     "Select Dependent Variable (Y)",
-                     available_y,
-                     key="regression_y_select"
-                 )
-            else:
-                 st.warning("Only one numeric variable available. Cannot perform regression.")
-                 reg_y_variable = None
+
+        if len(numeric_cols_list) < 2:
+             st.warning("Regression requires at least two numeric variables in the dataset.")
+             reg_x_variable = None
+             reg_y_variable = None
+        else:
+            with col1:
+                # Select the independent variable (X)
+                reg_x_variable = st.selectbox(
+                    "Select Independent Variable (X)",
+                    numeric_cols_list,
+                    key="regression_x_select",
+                    index = 0 # Default selection
+                )
+            with col2:
+                # Select the dependent variable (Y)
+                # Ensure Y is different from X
+                available_y = [c for c in numeric_cols_list if c != reg_x_variable]
+                if available_y:
+                     reg_y_variable = st.selectbox(
+                         "Select Dependent Variable (Y)",
+                         available_y,
+                         key="regression_y_select",
+                         index = 0 if available_y else -1 # Default if possible
+                     )
+                else:
+                     # This case should not happen if len(numeric_cols_list) >= 2, but safety check
+                     st.warning("Error selecting dependent variable.")
+                     reg_y_variable = None
 
         # Button to run regression
-        if reg_x_variable and reg_y_variable and st.button("Run Regression", key="regression_run_button"):
-            model_fit, error_msg = run_regression(df, reg_x_variable, reg_y_variable)
-            if error_msg:
-                st.error(f"Regression Error: {error_msg}")
-            elif model_fit:
-                st.write(f"**Regression Summary: {reg_y_variable} ~ {reg_x_variable}**")
-                # Display key results
-                st.metric("R-squared (R²)", f"{model_fit.rsquared:.3f}")
-                # Safely access params and pvalues, checking if keys exist
-                if reg_x_variable in model_fit.params:
-                    st.metric(f"Coefficient for {reg_x_variable}", f"{model_fit.params[reg_x_variable]:.3f}")
-                if reg_x_variable in model_fit.pvalues:
-                     st.metric(f"P-value for {reg_x_variable}", f"{model_fit.pvalues[reg_x_variable]:.4f}")
-                if 'const' in model_fit.params:
-                    st.metric("Intercept", f"{model_fit.params['const']:.3f}")
+        if reg_x_variable and reg_y_variable:
+             if st.button("Run Regression", key="regression_run_button"):
+                model_fit, error_msg = run_regression(df, reg_x_variable, reg_y_variable)
+                if error_msg:
+                    st.error(f"Regression Error: {error_msg}")
+                elif model_fit:
+                    st.write(f"**Regression Summary: {reg_y_variable} ~ {reg_x_variable}**")
+                    # Display key results using columns for better layout
+                    res_col1, res_col2, res_col3 = st.columns(3)
+                    with res_col1:
+                        st.metric("R-squared (R²)", f"{model_fit.rsquared:.3f}")
+                    # Safely access params and pvalues, checking if keys exist
+                    if reg_x_variable in model_fit.params:
+                         with res_col2:
+                            st.metric(f"Coefficient ({reg_x_variable})", f"{model_fit.params[reg_x_variable]:.3f}")
+                    if reg_x_variable in model_fit.pvalues:
+                         with res_col3:
+                            st.metric(f"P-value ({reg_x_variable})", f"{model_fit.pvalues[reg_x_variable]:.4g}") # General format
+                    # Intercept might be less critical, display below metrics
+                    if 'const' in model_fit.params:
+                        st.write(f"**Intercept (Constant):** {model_fit.params['const']:.3f}")
 
-                # Interpretation based on p-value of the coefficient
-                alpha = 0.05
-                if reg_x_variable in model_fit.pvalues:
-                    if model_fit.pvalues[reg_x_variable] < alpha:
-                        st.success(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is statistically significant (p < {alpha}).")
+
+                    # Interpretation based on p-value of the coefficient
+                    alpha = 0.05
+                    if reg_x_variable in model_fit.pvalues:
+                        p_val_coeff = model_fit.pvalues[reg_x_variable]
+                        if p_val_coeff < alpha:
+                            st.success(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is statistically significant (p < {alpha}). Changes in '{reg_x_variable}' are significantly associated with changes in '{reg_y_variable}'.")
+                        else:
+                            st.info(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is not statistically significant (p >= {alpha}). Changes in '{reg_x_variable}' are not significantly associated with changes in '{reg_y_variable}'.")
                     else:
-                        st.info(f"The relationship between '{reg_x_variable}' and '{reg_y_variable}' is not statistically significant (p >= {alpha}).")
+                        st.warning("Could not determine statistical significance (p-value for coefficient missing).")
+
+
+                    # Optional: Plot the regression line
+                    st.markdown("---")
+                    st.write("**Regression Plot**")
+                    try:
+                        fig_reg, ax_reg = plt.subplots(figsize=(8, 5)) # Control figure size
+                        sns.regplot(x=reg_x_variable, y=reg_y_variable, data=df, ax=ax_reg,
+                                    line_kws={'color': 'red', 'linestyle': '--', 'linewidth': 2},
+                                    scatter_kws={'alpha': 0.5, 's': 50}) # Adjust scatter points
+                        ax_reg.set_title(f"Regression: {reg_y_variable} vs {reg_x_variable}", fontsize=14)
+                        ax_reg.set_xlabel(reg_x_variable.replace('_',' ').title(), fontsize=12)
+                        ax_reg.set_ylabel(reg_y_variable.replace('_',' ').title(), fontsize=12)
+                        ax_reg.grid(True, linestyle='--', alpha=0.5)
+                        plt.tight_layout()
+                        st.pyplot(fig_reg)
+                    except Exception as plot_e:
+                        st.warning(f"Could not generate regression plot: {plot_e}")
+
                 else:
-                    st.warning("Could not determine statistical significance (p-value missing).")
+                    st.error("Regression failed to produce results for an unknown reason.")
+        else:
+             st.info("Please select both an independent (X) and a dependent (Y) variable.")
 
-
-                # Optional: Plot the regression line
-                try:
-                    fig_reg, ax_reg = plt.subplots(figsize=(8, 5))
-                    sns.regplot(x=reg_x_variable, y=reg_y_variable, data=df, ax=ax_reg,
-                                line_kws={'color': 'red', 'linestyle': '--'},
-                                scatter_kws={'alpha': 0.5})
-                    ax_reg.set_title(f"Regression Plot: {reg_y_variable} vs {reg_x_variable}")
-                    st.pyplot(fig_reg)
-                except Exception as plot_e:
-                    st.warning(f"Could not generate regression plot: {plot_e}")
-
-            else:
-                st.error("Regression failed to produce results.")
 
 # --- Footer ---
 st.markdown("---")
