@@ -16,9 +16,19 @@ GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaa
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv(DATA_URL, parse_dates=['Date'], dayfirst=True)
+    # Read CSV with header rows
+    df = pd.read_csv(DATA_URL, header=[0, 1], parse_dates=['Date'], dayfirst=True)
+    
     # Flatten multi-index columns
-    df.columns = [f"{col[0]} ({col[1]})" if col[1] else col[0] for col in df.columns]
+    df.columns = [
+        f"{col[0]} ({col[1]})" if pd.notna(col[1]) and col[1] != '' else col[0] 
+        for col in df.columns
+    ]
+    
+    # Ensure Date column exists
+    if 'Date' not in df.columns:
+        df = df.rename(columns={df.columns[0]: 'Date'})
+    
     return df
 
 @st.cache_data
