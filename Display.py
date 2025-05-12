@@ -6,11 +6,12 @@ import seaborn as sns # Import seaborn
 import geopandas as gpd
 import requests
 from scipy import stats
-import statsmodels.api as sm
+import statsmodels.api as sm # For OLS regression
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import io # Needed for saving plot to memory
 from fpdf import FPDF # Import FPDF for PDF generation
+from sklearn.linear_model import LinearRegression # Alternative for simple regression
 
 # --- App Setup ---
 st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
@@ -216,7 +217,8 @@ if not param_groups:
 
 # --- Sidebar Navigation ---
 st.sidebar.title("EcoMonitor Navigation")
-pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
+# **MODIFICATION:** Added "Prediction" to pages list
+pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics", "🔮 Prediction"]
 selected_page = st.sidebar.radio("Go to", pages)
 
 
@@ -365,44 +367,137 @@ elif selected_page == "Temporal":
 
 # --- Page 5: Statistics ---
 elif selected_page == "Statistics":
-    st.title("📉 Data Distribution Overview") # Updated title
+    st.title("📉 Data Distribution Overview")
 
-    # **MODIFICATION:** Removed analysis type selection. Directly show box plots.
     st.subheader("Box Plots for All Numerical Variables")
     st.markdown("Box plots visually summarize the distribution of each numerical variable, showing the median, quartiles, and potential outliers.")
     st.markdown("---", unsafe_allow_html=True)
 
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
-    # Exclude any ID or index-like columns if they are numeric but not meaningful for distribution
-    # For this dataset, all numeric columns seem relevant for a box plot.
     
     if not numeric_columns:
         st.warning("No numeric columns found in the dataset to generate box plots.")
     else:
-        # Determine number of columns for layout (e.g., 2 or 3 per row)
-        num_plot_cols = min(len(numeric_columns), 2) # Display up to 2 plots per row
-        
+        num_plot_cols = min(len(numeric_columns), 2)
         plot_cols = st.columns(num_plot_cols)
         col_idx = 0
 
         for i, col_name in enumerate(numeric_columns):
-            if col_name == 'Date': continue # Should already be excluded by select_dtypes, but good check
+            if col_name == 'Date': continue
 
             with plot_cols[col_idx]:
                 try:
-                    fig_box, ax_box = plt.subplots(figsize=(6, 4)) # Smaller individual plots
+                    fig_box, ax_box = plt.subplots(figsize=(6, 4))
                     sns.boxplot(y=df[col_name], ax=ax_box, width=0.5)
                     ax_box.set_title(f"Distribution of {col_name.replace('_', ' ').title()}", fontsize=12)
-                    ax_box.set_ylabel("") # Y-label is often redundant with title for single box plot
+                    ax_box.set_ylabel("")
                     plt.tight_layout()
                     st.pyplot(fig_box)
-                    plt.close(fig_box) # Close figure
+                    plt.close(fig_box)
                 except Exception as e:
                     st.error(f"Error generating box plot for {col_name}: {e}")
             
-            col_idx = (col_idx + 1) % num_plot_cols # Cycle through columns
-            if col_idx == 0 and i < len(numeric_columns) -1 : # Add a separator after each row of plots (except the last)
+            col_idx = (col_idx + 1) % num_plot_cols
+            if col_idx == 0 and i < len(numeric_columns) -1 :
                  st.markdown("---", unsafe_allow_html=True)
+
+# --- Page 6: Prediction ---
+elif selected_page == "🔮 Prediction":
+    st.title("🔮 Simple Time Series Prediction")
+    st.markdown("Predict future values of a selected parameter using linear regression based on time.")
+    st.markdown("---", unsafe_allow_html=True)
+
+    if param_groups:
+        # Let user select the parameter group, and we'll predict its 'Mean' value
+        pred_param_group_key = st.selectbox(
+            "Select Parameter Group to Predict",
+            sorted(param_groups.keys()),
+            key="prediction_param_group_select"
+        )
+        
+        # Get the actual column name for the 'Mean' of the selected group
+        if pred_param_group_key and 'Mean' in param_groups[pred_param_group_key]:
+            target_variable = param_groups[pred_param_group_key]['Mean']
+
+            days_to_predict = st.number_input(
+                "Number of Future Days to Predict",
+                min_value=7,
+                max_value=365, # Limit to a year for simplicity
+                value=30,
+                step=7,
+                key="prediction_days_input"
+            )
+
+            if st.button("Run Prediction", key="prediction_run_button"):
+                if target_variable not in df.columns:
+                    st.error(f"Target variable '{target_variable}' not found in the dataset.")
+                else:
+                    try:
+                        # Prepare data for regression
+                        predict_df = df[['Date', target_variable]].copy().dropna()
+                        if len(predict_df) < 2: # Need at least 2 points for regression
+                             st.error(f"Not enough data points for '{target_variable}' to make a prediction.")
+                        else:
+                            # Create a numerical time feature (days since first date)
+                            predict_df['Time_Step'] = (predict_df['Date'] - predict_df['Date'].min()).dt.days
+                            
+                            # X (features) and y (target)
+                            X_train = predict_df[['Time_Step']]
+                            y_train = predict_df[target_variable]
+
+                            # Fit Linear Regression model
+                            model = LinearRegression()
+                            model.fit(X_train, y_train)
+                            
+                            # Generate future time steps
+                            last_time_step = predict_df['Time_Step'].max()
+                            last_date = predict_df['Date'].max()
+                            
+                            future_time_steps = np.array([last_time_step + i + 1 for i in range(days_to_predict)]).reshape(-1, 1)
+                            future_dates = [last_date + pd.Timedelta(days=i+1) for i in range(days_to_predict)]
+                            
+                            # Make predictions
+                            future_predictions = model.predict(future_time_steps)
+                            
+                            # Create a DataFrame for results
+                            predictions_df = pd.DataFrame({
+                                'Date': future_dates,
+                                'Predicted_Value': future_predictions
+                            })
+
+                            st.subheader("Prediction Results")
+                            st.dataframe(predictions_df.style.format({'Predicted_Value': "{:.2f}"}))
+
+                            # Plot historical data, regression line, and forecast
+                            st.subheader("Prediction Plot")
+                            fig_pred, ax_pred = plt.subplots(figsize=(12, 6))
+                            
+                            # Historical data
+                            sns.lineplot(x='Date', y=target_variable, data=predict_df, ax=ax_pred, label='Historical Data', linestyle='-', linewidth=1.5)
+                            
+                            # Regression line on historical data
+                            # Predict on existing time steps to show the fitted line
+                            historical_fit = model.predict(X_train)
+                            ax_pred.plot(predict_df['Date'], historical_fit, color='red', linestyle='--', label='Fitted Regression Line')
+
+                            # Forecasted data
+                            sns.lineplot(x='Date', y='Predicted_Value', data=predictions_df, ax=ax_pred, label='Forecasted Data', color='green', linestyle='-', linewidth=2)
+                            
+                            ax_pred.set_title(f"Prediction for {target_variable.replace('_', ' ').title()}", fontsize=14)
+                            ax_pred.set_xlabel("Date", fontsize=12)
+                            ax_pred.set_ylabel(target_variable.replace('_', ' ').title(), fontsize=12)
+                            ax_pred.legend()
+                            plt.xticks(rotation=30, ha='right')
+                            plt.tight_layout()
+                            st.pyplot(fig_pred)
+                            plt.close(fig_pred) # Close figure
+
+                    except Exception as e:
+                        st.error(f"An error occurred during prediction: {e}")
+        else:
+            st.warning("Selected parameter group does not have a 'Mean' column or is invalid.")
+    else:
+        st.warning("No parameter groups available for prediction.")
 
 
 # --- Footer ---
