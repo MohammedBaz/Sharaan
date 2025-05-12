@@ -9,7 +9,6 @@ import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
 import random
-import json
 import matplotlib.colors
 from folium.plugins import HeatMap
 
@@ -107,28 +106,28 @@ st.subheader(f"{selected_variable} Intensity Heatmap")
 # Create base map
 m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
-# Add Sharaan boundary with static styling
+# Add Sharaan boundary with corrected styling
 folium.GeoJson(
     sharaan_geojson,
     style_function=lambda x: {
-        'fillColor': 'purple',
+        'fill_color': 'purple',  # Changed to snake_case
         'color': 'red',
         'weight': 2,
-        'fillOpacity': 0.2
+        'fill_opacity': 0.2     # Changed to snake_case
     }
 ).add_to(m)
 
-# Prepare heatmap data
-heat_data = [
-    [
-        feature['geometry']['coordinates'][1],  # Latitude
-        feature['geometry']['coordinates'][0],  # Longitude
-        feature['properties']['intensity']
-    ]  # Added missing closing bracket for inner list
-    for feature in heatmap_geojson_data['features']
-]
+# Prepare heatmap data with validation
+heat_data = []
+for feature in heatmap_geojson_data['features']:
+    try:
+        lon, lat = feature['geometry']['coordinates']
+        intensity = feature['properties']['intensity']
+        heat_data.append([lat, lon, intensity])
+    except (KeyError, IndexError) as e:
+        continue  # Skip invalid features
 
-# Add heatmap layer
+# Add heatmap layer with safe gradient
 HeatMap(
     heat_data,
     radius=20,
