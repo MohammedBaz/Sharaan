@@ -10,3 +10,4 @@ seaborn
 numpy
 scikit-learn
 requests
+statsmodels
