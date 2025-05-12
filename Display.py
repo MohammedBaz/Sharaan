@@ -93,60 +93,53 @@ time_series_data = generate_random_time_series(selected_variable)
 heatmap_geojson_data = generate_random_spatial_data_geojson(sharaan_geojson, selected_variable)
 
 # --- Time Series Plot ---
-st.subheader(f"{selected_variable} Time Series")
-fig, ax = plt.subplots()
-sns.lineplot(x='Time', y=selected_variable, data=time_series_data, ax=ax)
-ax.set_xlabel("Date")
-ax.set_ylabel(selected_variable)
-st.pyplot(fig)
-
 # --- Heatmap Visualization ---
 st.subheader(f"{selected_variable} Intensity Heatmap")
 
 # Create base map
 m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
-# Add Sharaan boundary with validated styling
+# Add Sharaan boundary with PROPERLY FORMATTED STYLING
 folium.GeoJson(
     sharaan_geojson,
     style_function=lambda x: {
-        'fillColor': '#800080',  # Purple in hex
-        'color': '#FF0000',       # Red in hex
+        'fill_color': '#800080',  # Snake_case keys
+        'color': '#FF0000',
         'weight': 2,
-        'fillOpacity': 0.2
+        'fill_opacity': 0.2
     }
 ).add_to(m)
 
-# Prepare heatmap data with strict validation
+# Prepare heatmap data with coordinate validation
 heat_data = []
 for feature in heatmap_geojson_data.get('features', []):
     try:
-        coords = feature.get('geometry', {}).get('coordinates', [])
-        props = feature.get('properties', {})
-        
-        if len(coords) == 2 and isinstance(coords[0], (int, float)) and isinstance(coords[1], (int, float)):
-            lon = float(coords[0])
-            lat = float(coords[1])
-            intensity = float(props.get('intensity', 0))
-            heat_data.append([lat, lon, intensity])
-    except (TypeError, ValueError, KeyError) as e:
+        coords = feature['geometry']['coordinates']
+        if len(coords) != 2:
+            continue
+        lon, lat = map(float, coords)
+        intensity = float(feature['properties']['intensity'])
+        heat_data.append([lat, lon, intensity])
+    except (KeyError, TypeError, ValueError) as e:
         continue
 
-# Add heatmap layer with safe parameters
+# Add heatmap layer with STRING-BASED GRADIENT KEYS
 if heat_data:
     HeatMap(
         heat_data,
         radius=20,
         blur=15,
         min_opacity=0.4,
-        max_zoom=18,
         gradient={
-            0.4: '#0000ff',  # Blue
-            0.6: '#00ff00',  # Lime
-            0.75: '#ffff00', # Yellow
-            1.0: '#ff0000'    # Red
+            '0.4': 'blue',    # String keys
+            '0.6': 'lime',
+            '0.75': 'yellow',
+            '1.0': 'red'
         }
     ).add_to(m)
+
+# Display map
+st_folium(m, width=700, height=500)
 
 # Display map with error handling
 try:
