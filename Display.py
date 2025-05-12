@@ -9,6 +9,7 @@ from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
+import plotly.graph_objects as go # Import Plotly for gauges
 
 # --- App Setup ---
 st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
@@ -68,7 +69,7 @@ st.markdown("""
         /* Style the video player */
         .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;}
 
-        /* Style st.metric */
+        /* Style st.metric (if used elsewhere) */
         [data-testid="stMetric"] {
             background-color: #FFFFFF;
             border: 1px solid #e0e0e0;
@@ -90,7 +91,15 @@ st.markdown("""
         h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
 
         /* Ensure plots have some breathing room */
-        .stPlotlyChart, .stpyplot { margin-bottom: 1.5rem; background-color: #ffffff; border-radius: 8px; padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.04); border: 1px solid #e0e0e0;}
+        /* Add styling for plotly charts */
+        .stPlotlyChart, .stpyplot {
+             margin-bottom: 1.5rem;
+             background-color: #ffffff;
+             border-radius: 8px;
+             padding: 10px;
+             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+             border: 1px solid #e0e0e0;
+        }
 
         /* Style selectbox and date input */
         .stSelectbox div[data-baseweb="select"] > div { background-color: #ffffff; border-radius: 6px;}
@@ -160,8 +169,9 @@ def get_parameter_groups(df):
 
 def normalize_value(value, overall_min, overall_max):
     """Normalizes a value to a 0-1 range based on overall min/max."""
+    # Handle NaN or zero range
     if pd.isna(value) or pd.isna(overall_min) or pd.isna(overall_max) or overall_max == overall_min:
-        return 0.5 # Default to middle color if data is missing or range is zero
+        return 0 # Return 0 if normalization is not possible
     # Clip the value to be within the min/max bounds, then normalize
     normalized = (np.clip(value, overall_min, overall_max) - overall_min) / (overall_max - overall_min)
     return normalized
@@ -190,12 +200,17 @@ def run_anova(data, variable, group_var):
         clean_data = data.dropna(subset=[variable, group_var])
         if clean_data[group_var].nunique() < 2:
              return None, f"After removing missing values, fewer than two groups remain for '{group_var}'."
-        if clean_data.groupby(group_var)[variable].nunique().min() == 0:
-             return None, f"The variable '{variable}' has no variation within at least one group of '{group_var}'."
+        # Check if variable has variance within groups after cleaning
+        if clean_data.groupby(group_var)[variable].nunique().min() < 2 and clean_data[variable].nunique() > 1 :
+             st.warning(f"Warning: The variable '{variable}' has no variation within at least one group of '{group_var}' after removing NaNs. ANOVA results might be misleading.")
+        elif clean_data[variable].nunique() < 2:
+             return None, f"The variable '{variable}' has insufficient variation overall after removing NaNs."
+
         model = ols(f'`{variable}` ~ C(`{group_var}`)', data=clean_data).fit()
         anova_table = sm.stats.anova_lm(model, typ=2)
         return anova_table, None
     except ValueError as ve:
+         # Catch specific errors like "endog has insufficient variation"
          return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(ve)}"
     except Exception as e:
         return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(e)}"
@@ -215,6 +230,48 @@ def run_regression(data, x_var, y_var):
         return model, None
     except Exception as e:
         return None, f"Regression failed for '{y_var}' vs '{x_var}': {str(e)}"
+
+# --- Plotting Function for Gauge ---
+def create_gauge(value, min_val, max_val, title):
+    """Creates a Plotly gauge chart."""
+    if pd.isna(value) or pd.isna(min_val) or pd.isna(max_val):
+        # Handle missing data gracefully - maybe show an empty gauge or a message
+        fig = go.Figure()
+        fig.update_layout(
+            title={'text': f"{title}<br><i>Data Unavailable</i>", 'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top'},
+            height=200, margin=dict(l=20, r=20, t=50, b=20) # Adjust margins
+        )
+        return fig
+
+    # Ensure max_val is greater than min_val for the gauge range
+    if max_val <= min_val:
+        max_val = min_val + 1 # Add a small buffer if min and max are the same
+
+    fig = go.Figure(go.Indicator(
+        mode = "gauge+number",
+        value = value,
+        domain = {'x': [0, 1], 'y': [0, 1]},
+        title = {'text': title, 'font': {'size': 16}},
+        gauge = {
+            'axis': {'range': [min_val, max_val], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': "#1a5276"}, # Color of the value bar
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "#e0e0e0",
+            'steps': [
+                {'range': [min_val, max_val], 'color': '#eaf2f8'}], # Background color of the gauge
+            # Threshold line can be added if needed, e.g., at the average
+            # 'threshold': {
+            #     'line': {'color': "red", 'width': 4},
+            #     'thickness': 0.75,
+            #     'value': (min_val + max_val) / 2 # Example threshold at midpoint
+            # }
+            }))
+    fig.update_layout(
+        height=200, # Adjust height
+        margin=dict(l=20, r=20, t=40, b=20) # Adjust margins
+        )
+    return fig
 
 # --- Load Data ---
 df = load_data()
@@ -251,8 +308,7 @@ elif selected_page == "Dashboard":
     st.title("📊 Climate & Environmental Dashboard")
 
     # --- Dashboard Controls ---
-    st.subheader("Dashboard Controls")
-    # **MODIFICATION:** Removed date input column, selectbox takes full width now
+    # **REMOVED:** st.subheader("Dashboard Controls")
     if param_groups:
         groups_list = sorted(param_groups.keys())
         selected_group_key_dashboard = st.selectbox(
@@ -268,41 +324,53 @@ elif selected_page == "Dashboard":
     st.markdown("---", unsafe_allow_html=True)
 
     # --- Data Filtering and Display ---
-    # **MODIFICATION:** Filter based only on selected parameter group, use entire dataframe
     if selected_group_key_dashboard:
         group_cols_info = param_groups[selected_group_key_dashboard]
-        # Use the whole dataframe for calculations as date range is removed
-        dashboard_df = df # Assign df to dashboard_df for clarity
+        dashboard_df = df # Use the whole dataframe
 
         if not dashboard_df.empty:
-            # Display Metrics using st.metric
-            st.subheader(f"Overall Statistics for {selected_group_key_dashboard.replace('_', ' ').title()}")
-            metric_cols = st.columns(3)
-            # Calculate overall metrics from the *entire* dataset for the selected parameter
-            overall_max = dashboard_df[group_cols_info['Max']].max()
-            overall_min = dashboard_df[group_cols_info['Min']].min()
-            overall_mean = dashboard_df[group_cols_info['Mean']].mean()
+            # **REMOVED:** st.subheader(f"Overall Statistics for...")
 
-            with metric_cols[0]:
-                st.metric(label="Overall Maximum", value=f"{overall_max:.2f}")
-            with metric_cols[1]:
-                st.metric(label="Overall Minimum", value=f"{overall_min:.2f}")
-            with metric_cols[2]:
-                st.metric(label="Overall Average", value=f"{overall_mean:.2f}")
+            # Display Metrics using Plotly Gauges
+            st.subheader(f"Key Statistics: {selected_group_key_dashboard.replace('_', ' ').title()}")
+            gauge_cols = st.columns(3)
+            # Calculate overall metrics from the *entire* dataset for the selected parameter
+            overall_max_val = dashboard_df[group_cols_info['Max']].max()
+            overall_min_val = dashboard_df[group_cols_info['Min']].min()
+            overall_mean_val = dashboard_df[group_cols_info['Mean']].mean()
+
+            # Determine a sensible range for the gauges (e.g., dataset min/max for the 'Mean' column)
+            # You might want to adjust this logic based on typical value ranges
+            gauge_min_range = dashboard_df[group_cols_info['Min']].min()
+            gauge_max_range = dashboard_df[group_cols_info['Max']].max()
+
+            # Handle potential NaN values in range calculation
+            if pd.isna(gauge_min_range): gauge_min_range = 0
+            if pd.isna(gauge_max_range): gauge_max_range = overall_max_val if not pd.isna(overall_max_val) else 1
+
+            with gauge_cols[0]:
+                fig_gauge_max = create_gauge(overall_max_val, gauge_min_range, gauge_max_range, "Overall Max")
+                st.plotly_chart(fig_gauge_max, use_container_width=True)
+
+            with gauge_cols[1]:
+                fig_gauge_min = create_gauge(overall_min_val, gauge_min_range, gauge_max_range, "Overall Min")
+                st.plotly_chart(fig_gauge_min, use_container_width=True)
+
+            with gauge_cols[2]:
+                fig_gauge_mean = create_gauge(overall_mean_val, gauge_min_range, gauge_max_range, "Overall Mean")
+                st.plotly_chart(fig_gauge_mean, use_container_width=True)
 
 
             st.markdown("---", unsafe_allow_html=True)
 
-            # Visualizations
+            # Visualizations - Trend Plot is now central
             st.subheader("Trend Over Time")
-            # **MODIFICATION:** Line chart now takes full width as map is removed
-            fig_line, ax_line = plt.subplots(figsize=(12, 5)) # Adjusted figsize
-            plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)" # Updated title
+            fig_line, ax_line = plt.subplots(figsize=(12, 5)) # Keep figsize reasonable
+            plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
             ax_line.set_title(plot_title, fontsize=14)
             for prefix in ['Max', 'Mean', 'Min']:
                 if prefix in group_cols_info:
                     col_name = group_cols_info[prefix]
-                    # Plot using the full dataframe (dashboard_df)
                     sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=3, linestyle='-', linewidth=1.5)
 
             ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
@@ -310,15 +378,13 @@ elif selected_page == "Dashboard":
             ax_line.legend(title="Statistic")
             plt.xticks(rotation=30, ha='right')
             plt.tight_layout()
-            st.pyplot(fig_line)
+            # Display the plot, allowing it to use the available width
+            st.pyplot(fig_line, use_container_width=True)
 
-            # **REMOVED MAP VISUALIZATION BLOCK**
 
         else:
-            # This case might be less likely now without date filtering, but good to keep
             st.warning("No data available for the selected parameter group.")
     else:
-         # Handle case where no parameter group is selected (if possible)
          st.warning("Please select a parameter group using the control above.")
 
 
@@ -326,7 +392,6 @@ elif selected_page == "Dashboard":
 elif selected_page == "Correlation":
     st.title("🔗 Cross-Parameter Correlation Analysis")
 
-    # Access the selection from the Dashboard page using its unique key
     excluded_group = st.session_state.get("dashboard_group_select_main", None)
     available_groups = sorted([p for p in param_groups.keys() if p != excluded_group])
 
@@ -436,7 +501,7 @@ elif selected_page == "Temporal":
                     ax_temporal.set_xlabel("Date", fontsize=12)
                     ax_temporal.legend(loc='best')
                     plt.tight_layout()
-                    st.pyplot(fig_temporal)
+                    st.pyplot(fig_temporal, use_container_width=True) # Make plot use container width
                 else:
                     st.warning(f"Missing one or more required columns (Max, Mean, Min) for parameter group '{temporal_group_key}'. Cannot generate plot.")
         else:
@@ -580,7 +645,7 @@ elif selected_page == "Statistics":
                         ax_reg.set_xlabel(reg_x_variable.replace('_',' ').title(), fontsize=12)
                         ax_reg.set_ylabel(reg_y_variable.replace('_',' ').title(), fontsize=12)
                         plt.tight_layout()
-                        st.pyplot(fig_reg)
+                        st.pyplot(fig_reg, use_container_width=True) # Make plot use container width
                     except Exception as plot_e: st.warning(f"Could not generate regression plot: {plot_e}")
                 else: st.error("Regression failed to produce results.")
         else: st.info("Select both an independent (X) and a dependent (Y) variable.")
