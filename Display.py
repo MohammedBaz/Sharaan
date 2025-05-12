@@ -11,7 +11,7 @@ import random
 import requests
 
 # Load data from GitHub
-DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/your_data.csv"
+DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/dataset.csv"
 GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 
 @st.cache_data
