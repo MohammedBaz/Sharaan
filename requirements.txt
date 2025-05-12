@@ -7,4 +7,6 @@ folium
 streamlit-folium
 matplotlib
 seaborn
-sklearn
+numpy
+scikit-learn
+requests
