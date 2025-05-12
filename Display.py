@@ -7,166 +7,151 @@ from streamlit_folium import st_folium
 import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
-from shapely.geometry import Point
-import random
-from folium.plugins import HeatMap
+from datetime import datetime
 
-# Define the GeoJSON URL
-geojson_url = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
-
-@st.cache_data
-def load_geojson(url):
-    """Loads GeoJSON data from a URL."""
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.json()
-
-@st.cache_data
-def generate_random_time_series(variable, n_points=100):
-    """Generates random time series data for selected variable."""
-    time = pd.date_range(start='2024-01-01', periods=n_points, freq='D')
-    
-    if variable == 'Temperature (°C)':
-        data = np.random.normal(25, 5, n_points).round(1)
-    elif variable == 'Humidity (%)':
-        data = np.random.uniform(20, 100, n_points).round(1)
-    elif variable == 'Wind Speed (m/s)':
-        data = np.random.weibull(2, n_points).round(1)
-    elif variable == 'Precipitation (mm)':
-        data = np.random.gamma(2, 2, n_points).round(1)
-    else:
-        data = np.random.rand(n_points)
-    
-    return pd.DataFrame({'Date': time, variable: data})
-
-def generate_random_points_in_polygon(polygon, num_points=2000):
-    """Generates random points within a Shapely polygon."""
-    minx, miny, maxx, maxy = polygon.bounds
-    points = []
-    while len(points) < num_points:
-        point = Point(random.uniform(minx, maxx), random.uniform(miny, maxy))
-        if polygon.contains(point):
-            points.append((point.y, point.x))
-    return points
-
-@st.cache_data
-def generate_spatial_intensity(variable):
-    """Returns intensity ranges based on selected variable."""
-    ranges = {
-        'Temperature (°C)': (0.5, 1.0),
-        'Humidity (%)': (0.3, 0.9),
-        'Wind Speed (m/s)': (0.4, 1.0),
-        'Precipitation (mm)': (0.2, 0.8)
+# Custom CSS styling
+st.markdown("""
+<style>
+    /* Main container */
+    .main {
+        background-color: #f8f9fa;
     }
-    return ranges.get(variable, (0, 1))
-
-@st.cache_data
-def generate_heatmap_data(geojson, variable, num_points=2000):
-    """Generates heatmap data with variable-specific intensities."""
-    gdf = gpd.GeoDataFrame.from_features(geojson['features'])
-    points = []
-    min_intensity, max_intensity = generate_spatial_intensity(variable)
     
-    for _, row in gdf.iterrows():
-        geom = row.geometry
-        polygons = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
-        
-        for poly in polygons:
-            coords = generate_random_points_in_polygon(poly, num_points)
-            for lat, lon in coords:
-                intensity = random.uniform(min_intensity, max_intensity)
-                points.append({
-                    "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
-                    "properties": {"intensity": intensity}
-                })
-    
-    return {"type": "FeatureCollection", "features": points}
-
-# Load GeoJSON data
-sharaan_geojson = load_geojson(geojson_url)
-gdf = gpd.GeoDataFrame.from_features(sharaan_geojson["features"])
-bounds = gdf.total_bounds
-center_lat, center_lon = (bounds[1] + bounds[3])/2, (bounds[0] + bounds[2])/2
-
-# Streamlit App
-st.title("Sharaan Protected Area Climate Dashboard")
-
-# Parameter Selection
-variables = [
-    'Temperature (°C)',
-    'Humidity (%)',
-    'Wind Speed (m/s)',
-    'Precipitation (mm)'
-]
-selected_var = st.sidebar.selectbox("Select Climate Parameter", variables)
-
-# Generate Data
-ts_data = generate_random_time_series(selected_var)
-heatmap_data = generate_heatmap_data(sharaan_geojson, selected_var)
-
-# Time Series Plot
-st.subheader(f"{selected_var} Time Series")
-fig, ax = plt.subplots(figsize=(10, 4))
-sns.lineplot(x='Date', y=selected_var, data=ts_data, ax=ax)
-ax.set_title(f"Daily {selected_var} Variation")
-ax.grid(True)
-st.pyplot(fig)
-
-# Heatmap Visualization
-st.subheader(f"{selected_var} Spatial Distribution")
-
-# Create Folium map
-m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
-
-# Add protected area boundary
-folium.GeoJson(
-    sharaan_geojson,
-    style_function=lambda x: {
-        'fillColor': '#4a148c',
-        'color': '#d81b60',
-        'weight': 2,
-        'fillOpacity': 0.2
+    /* Titles */
+    .header-text {
+        color: #2c3e50;
+        font-size: 2.5rem !important;
+        font-weight: 700;
+        margin-bottom: 1rem;
     }
-).add_to(m)
+    
+    /* Metrics cards */
+    .metric-card {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        margin: 10px;
+    }
+    
+    /* Map container */
+    .map-container {
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    
+    /* Time series chart */
+    .chart-container {
+        background: white;
+        border-radius: 15px;
+        padding: 20px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# Prepare heatmap data
-heat_points = []
-for feature in heatmap_data['features']:
-    try:
-        lon = feature['geometry']['coordinates'][0]
-        lat = feature['geometry']['coordinates'][1]
-        intensity = feature['properties']['intensity']
-        heat_points.append([lat, lon, intensity])
-    except (KeyError, IndexError):
-        continue
+# Dashboard Header
+st.markdown('<h1 class="header-text">🌧️ Sharaan Climate Dashboard</h1>', unsafe_allow_html=True)
 
-# Add heatmap layer with corrected gradient
-if heat_points:
-    HeatMap(
-        heat_points,
-        radius=25,
-        blur=20,
-        min_opacity=0.4,
-        gradient={
-            '0.4': 'blue',
-            '0.6': 'green',
-            '0.8': 'yellow',
-            '1.0': 'red'
-        }
-    ).add_to(m)
+# ========== Sidebar ==========
+with st.sidebar:
+    st.image("https://cdn-icons-png.flaticon.com/512/566/566985.png", width=80)
+    st.title("Settings")
+    
+    # Date range selector
+    date_range = st.date_input(
+        "Select Date Range",
+        value=[datetime(2016, 1, 1), datetime(2016, 8, 1)],
+        min_value=datetime(2016, 1, 1),
+        max_value=datetime(2016, 12, 31)
+    )
+    
+    # Parameter selection
+    parameter = st.selectbox(
+        "Climate Parameter",
+        ["Precipitation (mm)", "Temperature (°C)", "Humidity (%)", "Wind Speed (m/s)"],
+        index=0
+    )
+    
+    st.markdown("---")
+    st.caption("🌍 Spatial Analysis Settings")
+    map_style = st.selectbox(
+        "Map Style",
+        ["CartoDB Positron", "OpenStreetMap", "Stamen Terrain"]
+    )
 
-# Display map
-st_folium(m, width=800, height=500)
-
-# Data Statistics
-st.subheader("Data Summary")
+# ========== Main Content ==========
+# Metrics Row
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.metric("Average", f"{ts_data[selected_var].mean():.1f}")
+    st.markdown('<div class="metric-card">📊 **Average**<br><h2>4.4 mm</h2></div>', unsafe_allow_html=True)
 with col2:
-    st.metric("Maximum", f"{ts_data[selected_var].max():.1f}")
+    st.markdown('<div class="metric-card">🔥 **Maximum**<br><h2>13.8 mm</h2></div>', unsafe_allow_html=True)
 with col3:
-    st.metric("Minimum", f"{ts_data[selected_var].min():.1f}")
+    st.markdown('<div class="metric-card">❄️ **Minimum**<br><h2>0.1 mm</h2></div>', unsafe_allow_html=True)
 
-st.write("Note: All data shown is simulated for demonstration purposes.")
+# Main Content Tabs
+tab1, tab2 = st.tabs(["📈 Temporal Analysis", "🗺️ Spatial Analysis"])
+
+with tab1:
+    st.markdown('<div class="chart-container">', unsafe_allow_html=True)
+    
+    # Generate time series data
+    dates = pd.date_range(start=date_range[0], end=date_range[1], freq='D')
+    precipitation = np.random.gamma(2, 2, len(dates)).round(1)
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(10, 4))
+    sns.lineplot(
+        x=dates,
+        y=precipitation,
+        color='#3498db',
+        linewidth=2.5
+    )
+    
+    # Style plot
+    ax.set_title(f"Daily {parameter} Variation", fontsize=16, pad=20)
+    ax.set_xlabel("Date", fontsize=12)
+    ax.set_ylabel(parameter, fontsize=12)
+    ax.grid(True, alpha=0.3)
+    sns.despine()
+    plt.tight_layout()
+    
+    st.pyplot(fig)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with tab2:
+    st.markdown('<div class="map-container">', unsafe_allow_html=True)
+    
+    # Create Folium map
+    m = folium.Map(location=[25.5, 37.5], zoom_start=9, 
+                  tiles=map_style if map_style != "CartoDB Positron" else "CartoDB positron")
+    
+    # Add heatmap layer
+    heat_data = [[25.3 + np.random.rand()/2, 37.2 + np.random.rand()/2, np.random.rand()] 
+                for _ in range(200)]
+    HeatMap(heat_data, radius=15, blur=20, gradient={0.4: 'blue', 0.65: 'lime', 1: 'red'}).add_to(m)
+    
+    # Add protected area boundary
+    folium.GeoJson(
+        "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson",
+        style_function=lambda x: {
+            'fillColor': '#2c3e50',
+            'color': '#e74c3c',
+            'weight': 1.5,
+            'fillOpacity': 0.1
+        }
+    ).add_to(m)
+    
+    # Display map
+    st_folium(m, width=800, height=500)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# Footer
+st.markdown("---")
+st.caption("""
+🔍 **Data Source**: Simulated demonstration data  
+🗺️ **Base Map**: © OpenStreetMap contributors  
+📅 **Last Updated**: {date}  
+""".format(date=datetime.now().strftime("%Y-%m-%d %H:%M")))
