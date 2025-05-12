@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
-import random
 import requests
 from scipy import stats
 import statsmodels.api as sm
@@ -17,6 +16,8 @@ import warnings
 DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/dataset.csv"
 GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
 COLORMAP_NAME = 'viridis'
+VIDEO_PATH = "GreenCover.mp4"
+VIDEO_CONFIG = {"autoplay": False, "muted": True, "loop": False}
 
 # --- Data Loading Functions ---
 @st.cache_data
@@ -145,14 +146,16 @@ geojson, boundary_polygon = load_geojson()
 param_groups = get_parameter_groups(df)
 
 # --- Main App Structure ---
-tab1, tab2, tab3, tab4 = st.tabs([
+tabs = [
     "Climate Dashboard", 
     "Correlation Analysis",
     "Temporal Analysis", 
-    "Statistical Tests"
-])
+    "Statistical Tests",
+    "Green Cover Visualization"
+]
+tab1, tab2, tab3, tab4, tab5 = st.tabs(tabs)
 
-# Shared group selection with unique keys
+# --- Shared Components ---
 def group_selector(default_group='Air_temperature', key_suffix=""):
     groups = sorted(param_groups.keys())
     default_index = groups.index(default_group) if default_group in groups else 0
@@ -231,13 +234,9 @@ with tab1:
 with tab2:
     st.title("📊 Correlation Analysis")
     
-    # Get excluded parameter from Tab1
     excluded_param = st.session_state.get("param_group_dashboard", None)
-    
-    # Get available parameters for selection
     available_params = [p for p in param_groups.keys() if p != excluded_param]
     
-    # Multi-select parameters
     selected_params = st.multiselect(
         "Select Parameters for Correlation Analysis",
         options=available_params,
@@ -250,7 +249,6 @@ with tab2:
         st.warning("Please select at least two parameters")
         st.stop()
     
-    # Collect all variables from selected parameters
     corr_vars = []
     for param in selected_params:
         corr_vars.extend([
@@ -259,11 +257,9 @@ with tab2:
             param_groups[param]['Mean']
         ])
     
-    # Calculate correlation matrix
     st.subheader("Cross-Parameter Correlation Matrix")
     corr_matrix = df[corr_vars].corr()
     
-    # Create labels with parameter types
     labels = []
     for param in selected_params:
         labels.extend([
@@ -272,7 +268,6 @@ with tab2:
             f"{param}\n(Mean)"
         ])
     
-    # Create visualization
     fig, ax = plt.subplots(figsize=(12, 10))
     sns.heatmap(
         corr_matrix,
@@ -287,9 +282,7 @@ with tab2:
         ax=ax
     )
     
-    # Add separation lines between parameters
-    num_vars = len(selected_params)
-    for i in range(1, num_vars):
+    for i in range(1, len(selected_params)):
         pos = i * 3
         ax.axhline(pos, color='white', lw=2)
         ax.axvline(pos, color='white', lw=2)
@@ -298,8 +291,151 @@ with tab2:
     plt.yticks(rotation=0)
     st.pyplot(fig)
 
-# --- Remaining Tabs (unchanged) ---
-# [Keep the existing Temporal Analysis and Statistical Tests tabs here...]
+# --- Tab3: Temporal Analysis ---
+with tab3:
+    st.title("⏳ Temporal Analysis")
+    selected_group = group_selector(key_suffix="temporal")
+    group_data = param_groups[selected_group]
+    
+    st.subheader(f"Detailed Analysis: {selected_group.replace('_', ' ').title()}")
+    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7, key='temporal_window')
+    
+    ts_data = df.set_index('Date')[list(group_data.values())].rolling(window=window_size).mean()
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    for prefix, col in group_data.items():
+        sns.lineplot(data=ts_data, x=ts_data.index, y=col, ax=ax,
+                    label=f"{prefix} {selected_group}")
+    
+    ax.fill_between(ts_data.index,
+                    ts_data[group_data['Min']],
+                    ts_data[group_data['Max']],
+                    color='#95a5a6', alpha=0.2)
+    
+    ax.set_title(f"{selected_group.replace('_', ' ').title()} with {window_size}-Day Rolling Average")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    plt.xticks(rotation=45)
+    st.pyplot(fig)
+
+# --- Tab4: Statistical Tests ---
+with tab4:
+    st.title("📈 Statistical Testing")
+    selected_group = group_selector(key_suffix="stats")
+    group_data = param_groups[selected_group]
+    
+    test_type = st.selectbox("Select Test", ["T-Test", "ANOVA", "Regression"], key='test_type')
+    
+    if test_type == "T-Test":
+        col1, col2 = st.columns(2)
+        with col1:
+            variable = st.selectbox("Variable", list(group_data.values()), key='ttest_var')
+        with col2:
+            valid_group_vars = [col for col in df.columns if df[col].nunique() == 2]
+            group_var = st.selectbox("Group Variable", valid_group_vars, key='ttest_group')
+        
+        if st.button("Run T-Test", key='ttest_btn'):
+            result, error = run_ttest(df, variable, group_var)
+            if error:
+                st.error(error)
+            else:
+                t_stat, p_value = result
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("t-statistic", f"{t_stat:.2f}")
+                with col2:
+                    st.metric("p-value", f"{p_value:.4f}")
+                
+                fig, ax = plt.subplots()
+                sns.boxplot(x=group_var, y=variable, data=df)
+                st.pyplot(fig)
+    
+    elif test_type == "ANOVA":
+        variable = st.selectbox("Variable", list(group_data.values()), key='anova_var')
+        group_var = st.selectbox("Group Variable", df.columns, key='anova_group')
+        
+        if st.button("Run ANOVA", key='anova_btn'):
+            result, error = run_anova(df, variable, group_var)
+            if error:
+                st.error(error)
+            else:
+                st.dataframe(result.style.format("{:.4f}"))
+                
+                st.subheader("Post-hoc Analysis")
+                try:
+                    tukey = pairwise_tukeyhsd(df[variable], df[group_var])
+                    st.text(str(tukey))
+                except Exception as e:
+                    st.error(f"Post-hoc error: {str(e)}")
+    
+    elif test_type == "Regression":
+        col1, col2 = st.columns(2)
+        with col1:
+            x_var = st.selectbox("Independent Variable", list(group_data.values()), key='reg_x')
+        with col2:
+            y_var = st.selectbox("Dependent Variable", list(group_data.values()), key='reg_y')
+        
+        if st.button("Run Regression", key='reg_btn'):
+            model, error = run_regression(df, x_var, y_var)
+            if error:
+                st.error(error)
+            else:
+                st.subheader("Regression Results")
+                try:
+                    st.text(model.summary().as_text())
+                except Exception:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("R-squared", f"{model.rsquared:.2f}")
+                        st.metric("Coefficient", f"{model.params[1]:.2f}")
+                    with col2:
+                        st.metric("P-value", f"{model.pvalues[1]:.4f}")
+                        st.metric("Observations", model.nobs)
+                
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+                sm.qqplot(model.resid, line='s', ax=ax1)
+                sns.scatterplot(x=model.fittedvalues, y=model.resid, ax=ax2)
+                ax2.axhline(0, color='red', linestyle='--')
+                st.pyplot(fig)
+
+# --- Tab5: Green Cover Visualization ---
+with tab5:
+    st.title("🌿 Green Cover Visualization")
+    
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        st.markdown("""
+            ### Vegetation Monitoring
+            This time-lapse video shows changes in green cover
+            over the protected area.
+            """)
+            
+    with col2:
+        try:
+            video_file = open(VIDEO_PATH, 'rb')
+            video_bytes = video_file.read()
+            
+            st.video(video_bytes, format="video/mp4", **VIDEO_CONFIG)
+            
+            st.markdown("""
+                <style>
+                    .stVideo {
+                        border-radius: 15px;
+                        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                        margin: 20px 0;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+            
+        except FileNotFoundError:
+            st.error("""
+                Video file not found. Ensure:
+                1. GreenCover.mp4 exists in root directory
+                2. File is under 200MB
+                3. MP4 format with H.264 codec
+                """)
+        except Exception as e:
+            st.error(f"Video loading error: {str(e)}")
 
 # --- Footer ---
 st.markdown("---")
