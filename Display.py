@@ -16,14 +16,8 @@ GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaa
 
 @st.cache_data
 def load_data():
-    # Read CSV with header rows
-    df = pd.read_csv(DATA_URL, header=[0, 1], parse_dates=['Date'], dayfirst=True)
-    
-    # Flatten multi-index columns
-    df.columns = [
-        f"{col[0]} ({col[1]})" if pd.notna(col[1]) and col[1] != '' else col[0] 
-        for col in df.columns
-    ]
+    # Read CSV with single header row
+    df = pd.read_csv(DATA_URL, parse_dates=['Date'], dayfirst=True)
     
     # Ensure Date column exists
     if 'Date' not in df.columns:
@@ -43,6 +37,10 @@ try:
 except Exception as e:
     st.error(f"Error loading data: {str(e)}")
     st.stop()
+
+# Generate polygon from GeoJSON
+gdf = gpd.GeoDataFrame.from_features(geojson['features'])
+polygon = gdf.unary_union
 
 def generate_sensor_locations(num_sensors=50):
     sensors = []
@@ -64,7 +62,7 @@ with st.sidebar:
     parameter = st.selectbox(
         "Select Parameter",
         options=[col for col in df.columns if col != 'Date'],
-        index=6  # Default to Rainfall (Sum)
+        index=16  # Default to Rainfall
     )
     
     date_range = st.date_input(
