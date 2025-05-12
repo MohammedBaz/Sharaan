@@ -100,16 +100,28 @@ def run_anova(data, variable, group_var):
         return None, str(e)
 
 def run_regression(data, x_var, y_var):
-    """Linear regression with diagnostics"""
+    """Linear regression with enhanced error handling"""
     try:
+        # Clean data and validate inputs
         data_clean = data[[x_var, y_var]].dropna()
         if len(data_clean) < 10:
-            return None, "Minimum 10 samples required"
+            return None, "At least 10 samples required"
             
-        model = sm.OLS(data_clean[y_var], sm.add_constant(data_clean[x_var])).fit()
+        if data_clean[x_var].nunique() == 1:
+            return None, "Independent variable must have variation"
+            
+        if data_clean[y_var].nunique() == 1:
+            return None, "Dependent variable must have variation"
+        
+        # Add constant and fit model
+        X = sm.add_constant(data_clean[x_var])
+        y = data_clean[y_var]
+        model = sm.OLS(y, X).fit()
+        
         return model, None
+        
     except Exception as e:
-        return None, str(e)
+        return None, f"Regression failed: {str(e)}"
 
 # --- App Setup ---
 st.set_page_config(layout="wide")
@@ -240,20 +252,22 @@ with tab3:
             y_var = st.selectbox("Dependent Variable", numeric_vars)
         
         if st.button("Run Regression"):
-            model, error = run_regression(df, x_var, y_var)
-            if error:
-                st.error(error)
-            else:
-                st.subheader("Regression Results")
+        model, error = run_regression(df, x_var, y_var)
+        if error:
+            st.error(error)
+        else:
+            st.subheader("Regression Results")
+            try:
                 st.text(model.summary().as_text())
-                
-                # Diagnostic plots
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
-                sm.qqplot(model.resid, line='s', ax=ax1)
-                sns.scatterplot(x=model.fittedvalues, y=model.resid, ax=ax2)
-                ax2.axhline(0, color='red', linestyle='--')
-                st.pyplot(fig)
-
+            except Exception as summary_error:
+                st.error("Could not generate full summary. Key metrics:")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("R-squared", f"{model.rsquared:.2f}")
+                    st.metric("Coefficient", f"{model.params[1]:.2f}")
+                with col2:
+                    st.metric("P-value", f"{model.pvalues[1]:.4f}")
+                    st.metric("Observations", model.nobs)
 # --- Footer ---
 st.markdown("---")
 st.caption(f"Data updated: {df.Date.max().strftime('%Y-%m-%d')} | Protected Area Monitoring System")
