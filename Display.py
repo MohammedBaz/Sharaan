@@ -9,7 +9,8 @@ from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
-# Removed: import plotly.graph_objects as go - No longer needed
+import io # Needed for saving plot to memory
+from fpdf import FPDF # Import FPDF for PDF generation
 
 # --- App Setup ---
 st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
@@ -57,6 +58,15 @@ st.markdown("""
              padding: 10px 0px;
              font-size: 1.05em;
          }
+         /* Add margin below download button */
+         [data-testid="stSidebar"] .stDownloadButton {
+             margin-top: 1rem; /* Adjusted margin */
+         }
+         [data-testid="stSidebar"] .stDownloadButton button {
+             width: 100%; /* Make button full width */
+             margin-bottom: 0.5rem; /* Space between buttons */
+         }
+
 
         /* Style the video player */
         .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;}
@@ -90,7 +100,6 @@ st.markdown("""
              box-shadow: 0 1px 3px rgba(0,0,0,0.04);
              border: 1px solid #e0e0e0;
         }
-        /* Removed CSS for plotly charts */
 
         /* Style selectbox and date input */
         .stSelectbox div[data-baseweb="select"] > div { background-color: #ffffff; border-radius: 6px;}
@@ -199,8 +208,49 @@ def run_regression(data, x_var, y_var):
         return model, None
     except Exception as e: return None, f"Regression failed: {str(e)}"
 
-# --- Plotting Function for Gauge ---
-# REMOVED: create_gauge function is no longer needed
+# --- CSV Conversion Function ---
+@st.cache_data
+def convert_df_to_csv(df_to_convert):
+  """Converts a Pandas DataFrame to CSV bytes."""
+  return df_to_convert.to_csv(index=False).encode('utf-8')
+
+# --- PDF Generation Function ---
+def create_dashboard_pdf(param_name, fig, stats_dict):
+    """Generates a PDF report for the dashboard."""
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 10, f"EcoMonitor Dashboard Report: {param_name.replace('_', ' ').title()}", 0, 1, "C")
+    pdf.ln(10)
+
+    # Add Statistics
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, "Overall Statistics:", 0, 1)
+    pdf.set_font("Helvetica", "", 11)
+    pdf.cell(0, 8, f"  - Maximum: {stats_dict['max']:.2f}", 0, 1)
+    pdf.cell(0, 8, f"  - Average: {stats_dict['mean']:.2f}", 0, 1)
+    pdf.cell(0, 8, f"  - Minimum: {stats_dict['min']:.2f}", 0, 1)
+    pdf.ln(10)
+
+    # Add Plot
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 10, "Trend Over Time Plot:", 0, 1)
+    pdf.ln(5)
+
+    # Save plot to a bytes buffer
+    img_buffer = io.BytesIO()
+    fig.savefig(img_buffer, format='png', dpi=300, bbox_inches='tight')
+    img_buffer.seek(0)
+
+    # Calculate image width to fit page (A4 width ~ 210mm, leave margins)
+    page_width = pdf.w - 2 * pdf.l_margin
+    # Add image - FPDF uses mm for dimensions
+    pdf.image(img_buffer, x=pdf.l_margin, w=page_width)
+    img_buffer.close()
+
+    # Return PDF as bytes
+    return pdf.output(dest='S').encode('latin-1') # Use latin-1 encoding as recommended by fpdf
+
 
 # --- Load Data ---
 df = load_data()
@@ -214,6 +264,18 @@ if not param_groups:
 st.sidebar.title("EcoMonitor Navigation")
 pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
 selected_page = st.sidebar.radio("Go to", pages)
+
+# --- Add Download Button to Sidebar ---
+st.sidebar.markdown("---") # Separator
+csv_data = convert_df_to_csv(df) # Convert the main dataframe
+st.sidebar.download_button(
+   label="📥 Download Full Data (CSV)",
+   data=csv_data,
+   file_name='ecomonitor_full_data.csv', # Changed filename slightly
+   mime='text/csv',
+   key='download_csv_all' # Added key
+)
+
 
 # --- Main Page Content (Conditional Display) ---
 
@@ -252,20 +314,19 @@ elif selected_page == "Dashboard":
     # --- Data Filtering and Display ---
     if selected_group_key_dashboard:
         group_cols_info = param_groups[selected_group_key_dashboard]
-        dashboard_df = df
+        dashboard_df = df # Use the whole dataframe
 
         if not dashboard_df.empty:
 
-            # **MODIFICATION:** Plot first, then metrics below
             # Trend Plot
             st.subheader("Trend Over Time")
+            # Create figure object explicitly to pass to PDF function
             fig_line, ax_line = plt.subplots(figsize=(12, 5))
             plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
             ax_line.set_title(plot_title, fontsize=14)
             for prefix in ['Max', 'Mean', 'Min']:
                 if prefix in group_cols_info:
                     col_name = group_cols_info[prefix]
-                    # Ensure line plot without markers
                     sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, linestyle='-', linewidth=1.5)
 
             ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
@@ -273,15 +334,14 @@ elif selected_page == "Dashboard":
             ax_line.legend(title="Statistic")
             plt.xticks(rotation=30, ha='right')
             plt.tight_layout()
-            st.pyplot(fig_line, use_container_width=True) # Plot takes full width
+            st.pyplot(fig_line, use_container_width=True) # Display the plot
 
-            st.markdown("---", unsafe_allow_html=True) # Separator
+            st.markdown("---", unsafe_allow_html=True)
 
             # Key Statistics using st.metric
             st.subheader(f"Key Statistics: {selected_group_key_dashboard.replace('_', ' ').title()}")
-            metric_cols = st.columns(3) # Arrange metrics horizontally
+            metric_cols = st.columns(3)
 
-            # Calculate overall metrics
             overall_max_val = dashboard_df[group_cols_info['Max']].max()
             overall_min_val = dashboard_df[group_cols_info['Min']].min()
             overall_mean_val = dashboard_df[group_cols_info['Mean']].mean()
@@ -289,11 +349,26 @@ elif selected_page == "Dashboard":
             with metric_cols[0]:
                 st.metric(label="Overall Maximum", value=f"{overall_max_val:.2f}")
             with metric_cols[1]:
-                 st.metric(label="Overall Average", value=f"{overall_mean_val:.2f}") # Swapped order for common layout
+                 st.metric(label="Overall Average", value=f"{overall_mean_val:.2f}")
             with metric_cols[2]:
                 st.metric(label="Overall Minimum", value=f"{overall_min_val:.2f}")
 
-            # REMOVED Gauge creation and display logic
+            # --- PDF Download Button ---
+            st.markdown("---", unsafe_allow_html=True)
+            stats_for_pdf = {'max': overall_max_val, 'mean': overall_mean_val, 'min': overall_min_val}
+            try:
+                pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
+                st.download_button(
+                    label="📄 Download Dashboard as PDF",
+                    data=pdf_bytes,
+                    file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
+                    mime="application/pdf",
+                    key='download_pdf_dashboard' # Added key
+                )
+            except Exception as pdf_e:
+                st.error(f"Failed to generate PDF: {pdf_e}")
+            finally:
+                 plt.close(fig_line) # Close the figure to free memory
 
         else:
             st.warning("No data available for the selected parameter group.")
@@ -336,6 +411,7 @@ elif selected_page == "Correlation":
                 ax_corr.set_title("Correlation Matrix Heatmap", fontsize=14)
                 plt.xticks(rotation=45, ha='right', fontsize=10); plt.yticks(rotation=0, fontsize=10)
                 plt.tight_layout(pad=2.0); st.pyplot(fig_corr)
+                plt.close(fig_corr) # Close figure
             elif len(corr_vars_cols) <= 1: st.warning("Need >= 2 valid columns for correlation.")
         else: st.info("Please select at least 2 parameters.")
     else: st.warning("Not enough parameters available for correlation.")
@@ -368,6 +444,7 @@ elif selected_page == "Temporal":
                          ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
                     ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '), fontsize=12); ax_temporal.set_xlabel("Date", fontsize=12)
                     ax_temporal.legend(loc='best'); plt.tight_layout(); st.pyplot(fig_temporal, use_container_width=True)
+                    plt.close(fig_temporal) # Close figure
                 else: st.warning(f"Missing required columns for '{temporal_group_key}'.")
         else: st.warning("Please select a parameter group.")
     else: st.warning("No parameter groups available.")
@@ -468,11 +545,13 @@ elif selected_page == "Statistics":
                         st.markdown("---", unsafe_allow_html=True)
                         st.markdown("##### Regression Plot")
                         try:
+                            # Create figure object explicitly to close later
                             fig_reg, ax_reg = plt.subplots(figsize=(8, 5))
                             sns.regplot(x=reg_x_variable, y=reg_y_variable, data=df, ax=ax_reg, line_kws={'color': 'red', 'linestyle': '--', 'linewidth': 2}, scatter_kws={'alpha': 0.5, 's': 50})
                             ax_reg.set_title(f"Regression: {reg_y_variable} vs {reg_x_variable}", fontsize=14)
                             ax_reg.set_xlabel(reg_x_variable.replace('_',' ').title(), fontsize=12); ax_reg.set_ylabel(reg_y_variable.replace('_',' ').title(), fontsize=12)
                             plt.tight_layout(); st.pyplot(fig_reg, use_container_width=True)
+                            plt.close(fig_reg) # Close figure
                         except Exception as plot_e: st.warning(f"Could not generate plot: {plot_e}")
                     else: st.error("Regression failed.")
             else: st.info("Select both independent (X) and dependent (Y) variables.")
@@ -481,4 +560,3 @@ elif selected_page == "Statistics":
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
-
