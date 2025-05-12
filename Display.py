@@ -9,30 +9,23 @@ from scipy import stats
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
-import plotly.graph_objects as go # Import Plotly for gauges
+# Removed: import plotly.graph_objects as go - No longer needed
 
 # --- App Setup ---
 st.set_page_config(layout="wide", page_title="EcoMonitor", page_icon="🌿")
 
 # --- Plot Style ---
-# Set a default plot style for potentially cleaner visuals
 sns.set_style("whitegrid")
-# Set default font size for plots (optional, adjust as needed)
 plt.rcParams.update({'font.size': 11})
 
 
 # --- Configuration ---
-# URL for the dataset CSV file
 DATA_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/dataset.csv"
-# URL for the GeoJSON file defining the area boundaries
 GEOJSON_URL = "https://raw.githubusercontent.com/MohammedBaz/Sharaan/main/Sharaan.geojson"
-# Path to the video file (ensure this file exists in the same directory or provide a correct path)
 VIDEO_PATH = "GreenCover.mp4"
-# Configuration settings for the video player
 VIDEO_CONFIG = {"autoplay": False, "muted": True, "loop": False}
 
 # --- Custom CSS Styling ---
-# Apply custom styles to the Streamlit app elements for better aesthetics
 st.markdown("""
     <style>
         /* Style the main background */
@@ -48,28 +41,27 @@ st.markdown("""
 
         /* Style the sidebar */
         [data-testid="stSidebar"] {
-            background-color: #eaf2f8; /* Light blue background */
+            background-color: #eaf2f8;
             padding: 1rem;
         }
          [data-testid="stSidebar"] h1 {
-            color: #1a5276; /* Darker blue title */
+            color: #1a5276;
             font-size: 1.8em;
             margin-bottom: 1rem;
          }
          [data-testid="stSidebar"] .stRadio > label {
-             padding-bottom: 10px; /* Space below radio title */
-             font-weight: 500; /* Make radio label slightly bolder */
+             padding-bottom: 10px;
+             font-weight: 500;
          }
          [data-testid="stSidebar"] .stRadio > div > div {
-             padding: 10px 0px; /* Increased spacing between radio buttons */
+             padding: 10px 0px;
              font-size: 1.05em;
          }
-
 
         /* Style the video player */
         .stVideo { border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); margin-bottom: 1rem;}
 
-        /* Style st.metric (if used elsewhere) */
+        /* Style st.metric */
         [data-testid="stMetric"] {
             background-color: #FFFFFF;
             border: 1px solid #e0e0e0;
@@ -78,12 +70,11 @@ st.markdown("""
             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
         }
         [data-testid="stMetricLabel"] {
-            font-size: 0.95em; color: #555; font-weight: 500; /* Style label */
+            font-size: 0.95em; color: #555; font-weight: 500;
         }
         [data-testid="stMetricValue"] {
-             font-size: 2.2em; color: #1a5276; font-weight: 700; /* Style value */
+             font-size: 2.2em; color: #1a5276; font-weight: 700;
         }
-
 
         /* Style the main titles in the main area */
         h1, h2 { color: #2c3e50; font-weight: 600; margin-top: 0rem; padding-top: 0rem;}
@@ -91,8 +82,7 @@ st.markdown("""
         h3 { color: #34495e; margin-top: 1.5rem; margin-bottom: 0.8rem; border-bottom: 1px solid #ddd; padding-bottom: 5px;}
 
         /* Ensure plots have some breathing room */
-        /* Add styling for plotly charts */
-        .stPlotlyChart, .stpyplot {
+        .stpyplot { /* Target only matplotlib plots */
              margin-bottom: 1.5rem;
              background-color: #ffffff;
              border-radius: 8px;
@@ -100,11 +90,7 @@ st.markdown("""
              box-shadow: 0 1px 3px rgba(0,0,0,0.04);
              border: 1px solid #e0e0e0;
         }
-        /* Reduce bottom margin specifically for gauge charts when stacked */
-        .stPlotlyChart[title*="gauge"] {
-             margin-bottom: 0.5rem; /* Less space below gauges */
-        }
-
+        /* Removed CSS for plotly charts */
 
         /* Style selectbox and date input */
         .stSelectbox div[data-baseweb="select"] > div { background-color: #ffffff; border-radius: 6px;}
@@ -117,7 +103,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # --- Data Loading Functions ---
-@st.cache_data # Cache the data to avoid reloading on every interaction
+@st.cache_data
 def load_data():
     """Loads, cleans, and preprocesses the dataset from the DATA_URL."""
     try:
@@ -125,19 +111,18 @@ def load_data():
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
         df.columns = df.columns.str.replace(' ', '_')
         if df['Date'].isnull().any():
-            st.error("Error: Some date values could not be parsed. Please check the 'Date' column format in the CSV.")
+            st.error("Error: Some date values could not be parsed.")
             st.stop()
         numeric_cols = [col for col in df.columns if col != 'Date']
         for col in numeric_cols:
             df[col] = pd.to_numeric(df[col], errors='coerce')
-        # Drop rows where Date is NaT *after* conversion attempt
         df.dropna(subset=['Date'], inplace=True)
         return df.sort_values('Date').dropna(how='all', axis=1)
     except Exception as e:
-        st.error(f"Fatal Error: Data loading failed. Cannot start the application. Details: {str(e)}")
+        st.error(f"Fatal Error: Data loading failed: {str(e)}")
         st.stop()
 
-@st.cache_data # Cache the GeoJSON data
+@st.cache_data
 def load_geojson():
     """Loads the GeoJSON data from the GEOJSON_URL."""
     try:
@@ -149,7 +134,7 @@ def load_geojson():
              gdf.geometry = gdf.geometry.buffer(0)
         return geojson, gdf.geometry.unary_union
     except Exception as e:
-        st.error(f"Error: GeoJSON loading failed. Map features might be unavailable. Details: {str(e)}")
+        st.error(f"Error: GeoJSON loading failed: {str(e)}")
         return None, None
 
 # --- Helper Functions ---
@@ -164,8 +149,7 @@ def get_parameter_groups(df):
                 prefix = parts[0]
                 parameter = '_'.join(parts[1:])
                 if prefix in ['Max', 'Min', 'Mean']:
-                    if parameter not in groups:
-                         groups[parameter] = {}
+                    if parameter not in groups: groups[parameter] = {}
                     groups[parameter][prefix] = col
     return {param: data for param, data in groups.items() if param and all(k in data for k in ['Max', 'Min', 'Mean'])}
 
@@ -181,94 +165,49 @@ def normalize_value(value, overall_min, overall_max):
 def run_ttest(data, variable, group_var):
     """Performs an independent two-sample t-test."""
     groups = data[group_var].dropna().unique()
-    if len(groups) != 2:
-        return None, f"T-Test requires exactly two groups. Found {len(groups)} for '{group_var}'."
+    if len(groups) != 2: return None, f"T-Test requires 2 groups. Found {len(groups)}."
     group_data = [data.loc[data[group_var] == grp, variable].dropna() for grp in groups]
-    if any(len(d) < 3 for d in group_data):
-        return None, f"T-Test requires at least 3 valid (non-NaN) samples per group for '{variable}'. Check data for selected groups."
+    if any(len(d) < 3 for d in group_data): return None, f"T-Test requires >= 3 valid samples per group."
     try:
         t_stat, p_value = stats.ttest_ind(*group_data, nan_policy='omit')
         return (t_stat, p_value), None
-    except Exception as e:
-        return None, f"T-Test failed: {str(e)}"
+    except Exception as e: return None, f"T-Test failed: {str(e)}"
 
 def run_anova(data, variable, group_var):
     """Performs a one-way ANOVA test."""
-    if data[group_var].dropna().nunique() < 2:
-        return None, f"ANOVA requires at least two distinct groups for '{group_var}'."
+    if data[group_var].dropna().nunique() < 2: return None, f"ANOVA requires >= 2 groups."
     try:
         clean_data = data.dropna(subset=[variable, group_var])
-        if clean_data[group_var].nunique() < 2:
-             return None, f"After removing missing values, fewer than two groups remain for '{group_var}'."
-        if clean_data.groupby(group_var)[variable].nunique().min() < 2 and clean_data[variable].nunique() > 1 :
-             st.warning(f"Warning: The variable '{variable}' has no variation within at least one group of '{group_var}' after removing NaNs. ANOVA results might be misleading.")
-        elif clean_data[variable].nunique() < 2:
-             return None, f"The variable '{variable}' has insufficient variation overall after removing NaNs."
-
+        if clean_data[group_var].nunique() < 2: return None, f"Fewer than 2 groups remain after removing NaNs."
+        if clean_data.groupby(group_var)[variable].nunique().min() < 2 and clean_data[variable].nunique() > 1 : st.warning(f"Warning: '{variable}' has no variation in >= 1 group.")
+        elif clean_data[variable].nunique() < 2: return None, f"'{variable}' has insufficient variation overall."
         model = ols(f'`{variable}` ~ C(`{group_var}`)', data=clean_data).fit()
         anova_table = sm.stats.anova_lm(model, typ=2)
         return anova_table, None
-    except ValueError as ve:
-         return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(ve)}"
-    except Exception as e:
-        return None, f"ANOVA failed for '{variable}' by '{group_var}': {str(e)}"
+    except ValueError as ve: return None, f"ANOVA failed: {str(ve)}"
+    except Exception as e: return None, f"ANOVA failed: {str(e)}"
 
 def run_regression(data, x_var, y_var):
     """Performs a simple linear regression."""
     try:
         data_clean = data[[x_var, y_var]].dropna()
-        if len(data_clean) < 10:
-            return None, f"Regression requires at least 10 non-missing data points for '{x_var}' and '{y_var}'. Found {len(data_clean)}."
-        if data_clean[x_var].nunique() < 2:
-            return None, f"Independent variable '{x_var}' has insufficient variation (needs at least 2 unique values)."
-        if data_clean[y_var].nunique() < 2:
-             return None, f"Dependent variable '{y_var}' has insufficient variation (needs at least 2 unique values)."
+        if len(data_clean) < 10: return None, f"Regression requires >= 10 samples. Found {len(data_clean)}."
+        if data_clean[x_var].nunique() < 2: return None, f"'{x_var}' has insufficient variation."
+        if data_clean[y_var].nunique() < 2: return None, f"'{y_var}' has insufficient variation."
         X = sm.add_constant(data_clean[x_var])
         model = sm.OLS(data_clean[y_var], X).fit()
         return model, None
-    except Exception as e:
-        return None, f"Regression failed for '{y_var}' vs '{x_var}': {str(e)}"
+    except Exception as e: return None, f"Regression failed: {str(e)}"
 
 # --- Plotting Function for Gauge ---
-def create_gauge(value, min_val, max_val, title):
-    """Creates a Plotly gauge chart."""
-    if pd.isna(value) or pd.isna(min_val) or pd.isna(max_val):
-        fig = go.Figure()
-        fig.update_layout(
-            title={'text': f"{title}<br><i>Data Unavailable</i>", 'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top', 'font': {'size': 12}}, # Smaller font
-            height=150, # **REDUCED HEIGHT**
-            margin=dict(l=10, r=10, t=35, b=10) # Adjusted margins
-        )
-        return fig
-
-    if max_val <= min_val: max_val = min_val + 1
-
-    fig = go.Figure(go.Indicator(
-        mode = "gauge+number",
-        value = value,
-        number = {'suffix': "", 'font': {'size': 24}}, # **REDUCED NUMBER FONT SIZE**
-        domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': title, 'font': {'size': 12}}, # **REDUCED TITLE FONT SIZE**
-        gauge = {
-            'axis': {'range': [min_val, max_val], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': "#1a5276", 'thickness': 0.4},
-            'bgcolor': "white",
-            'borderwidth': 1,
-            'bordercolor': "#e0e0e0",
-            'steps': [{'range': [min_val, max_val], 'color': '#eaf2f8'}],
-            }))
-    fig.update_layout(
-        height=150, # **REDUCED HEIGHT**
-        margin=dict(l=10, r=10, t=35, b=10) # Adjusted margins
-        )
-    return fig
+# REMOVED: create_gauge function is no longer needed
 
 # --- Load Data ---
 df = load_data()
 geojson, sharaan_boundary = load_geojson()
 param_groups = get_parameter_groups(df)
 if not param_groups:
-    st.error("Error: Could not identify valid parameter groups (Max, Min, Mean) from column names.")
+    st.error("Error: Could not identify valid parameter groups.")
     st.stop()
 
 # --- Sidebar Navigation ---
@@ -287,11 +226,9 @@ if selected_page == "Green Cover":
             with open(VIDEO_PATH, 'rb') as video_file:
                 video_bytes = video_file.read()
             st.video(video_bytes, format="video/mp4", start_time=0, **VIDEO_CONFIG)
-            st.caption("Animation illustrating fluctuations in vegetation indices derived from satellite imagery.")
-        except FileNotFoundError:
-            st.error(f"Error: Video file not found at '{VIDEO_PATH}'.")
-        except Exception as e:
-            st.error(f"Error loading video: {str(e)}")
+            st.caption("Animation illustrating fluctuations in vegetation indices.")
+        except FileNotFoundError: st.error(f"Error: Video file not found at '{VIDEO_PATH}'.")
+        except Exception as e: st.error(f"Error loading video: {str(e)}")
 
 # --- Page 2: Climate Dashboard ---
 elif selected_page == "Dashboard":
@@ -319,52 +256,44 @@ elif selected_page == "Dashboard":
 
         if not dashboard_df.empty:
 
-            # Create columns for Plot (left) and Gauges (right)
-            plot_col, gauge_col = st.columns([3, 1]) # Adjust ratio as needed (e.g., 3:1)
+            # **MODIFICATION:** Plot first, then metrics below
+            # Trend Plot
+            st.subheader("Trend Over Time")
+            fig_line, ax_line = plt.subplots(figsize=(12, 5))
+            plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
+            ax_line.set_title(plot_title, fontsize=14)
+            for prefix in ['Max', 'Mean', 'Min']:
+                if prefix in group_cols_info:
+                    col_name = group_cols_info[prefix]
+                    # Ensure line plot without markers
+                    sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, linestyle='-', linewidth=1.5)
 
-            with plot_col:
-                # Visualizations - Trend Plot is now central
-                st.subheader("Trend Over Time")
-                fig_line, ax_line = plt.subplots(figsize=(12, 5))
-                plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
-                ax_line.set_title(plot_title, fontsize=14)
-                for prefix in ['Max', 'Mean', 'Min']:
-                    if prefix in group_cols_info:
-                        col_name = group_cols_info[prefix]
-                        # **MODIFICATION:** Removed marker='o' for smoother line
-                        sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, linestyle='-', linewidth=1.5) # Removed marker
+            ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
+            ax_line.set_xlabel("Date", fontsize=12)
+            ax_line.legend(title="Statistic")
+            plt.xticks(rotation=30, ha='right')
+            plt.tight_layout()
+            st.pyplot(fig_line, use_container_width=True) # Plot takes full width
 
-                ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
-                ax_line.set_xlabel("Date", fontsize=12)
-                ax_line.legend(title="Statistic")
-                plt.xticks(rotation=30, ha='right')
-                plt.tight_layout()
-                st.pyplot(fig_line, use_container_width=True)
+            st.markdown("---", unsafe_allow_html=True) # Separator
 
-            with gauge_col:
-                # Display Metrics using Plotly Gauges (stacked vertically)
-                st.subheader(f"Key Statistics")
-                # Calculate overall metrics
-                overall_max_val = dashboard_df[group_cols_info['Max']].max()
-                overall_min_val = dashboard_df[group_cols_info['Min']].min()
-                overall_mean_val = dashboard_df[group_cols_info['Mean']].mean()
+            # Key Statistics using st.metric
+            st.subheader(f"Key Statistics: {selected_group_key_dashboard.replace('_', ' ').title()}")
+            metric_cols = st.columns(3) # Arrange metrics horizontally
 
-                # Determine gauge range
-                gauge_min_range = dashboard_df[group_cols_info['Min']].min()
-                gauge_max_range = dashboard_df[group_cols_info['Max']].max()
-                if pd.isna(gauge_min_range): gauge_min_range = 0
-                if pd.isna(gauge_max_range): gauge_max_range = overall_max_val if not pd.isna(overall_max_val) else 1
+            # Calculate overall metrics
+            overall_max_val = dashboard_df[group_cols_info['Max']].max()
+            overall_min_val = dashboard_df[group_cols_info['Min']].min()
+            overall_mean_val = dashboard_df[group_cols_info['Mean']].mean()
 
-                # Create and display gauges
-                fig_gauge_max = create_gauge(overall_max_val, gauge_min_range, gauge_max_range, "Overall Max")
-                st.plotly_chart(fig_gauge_max, use_container_width=True)
+            with metric_cols[0]:
+                st.metric(label="Overall Maximum", value=f"{overall_max_val:.2f}")
+            with metric_cols[1]:
+                 st.metric(label="Overall Average", value=f"{overall_mean_val:.2f}") # Swapped order for common layout
+            with metric_cols[2]:
+                st.metric(label="Overall Minimum", value=f"{overall_min_val:.2f}")
 
-                fig_gauge_mean = create_gauge(overall_mean_val, gauge_min_range, gauge_max_range, "Overall Mean")
-                st.plotly_chart(fig_gauge_mean, use_container_width=True)
-
-                fig_gauge_min = create_gauge(overall_min_val, gauge_min_range, gauge_max_range, "Overall Min")
-                st.plotly_chart(fig_gauge_min, use_container_width=True)
-
+            # REMOVED Gauge creation and display logic
 
         else:
             st.warning("No data available for the selected parameter group.")
@@ -392,30 +321,22 @@ elif selected_page == "Correlation":
             corr_labels = []
             valid_selection = True
             for p_group in selected_corr_groups:
-                if p_group not in param_groups:
-                    st.warning(f"Parameter group '{p_group}' seems invalid. Skipping.")
-                    valid_selection = False; continue
+                if p_group not in param_groups: st.warning(f"Invalid group '{p_group}'."); valid_selection = False; continue
                 for stat_type in ['Max', 'Min', 'Mean']:
                     if stat_type in param_groups[p_group]:
-                         col_name = param_groups[p_group][stat_type]
-                         corr_vars_cols.append(col_name)
-                         label_text = p_group.replace('_', ' ').title()
-                         corr_labels.append(f"{label_text[:15]}\n({stat_type})")
-                    else:
-                        st.warning(f"Missing '{stat_type}' column for '{p_group}'. Skipping."); valid_selection = False
+                         col_name = param_groups[p_group][stat_type]; corr_vars_cols.append(col_name)
+                         label_text = p_group.replace('_', ' ').title(); corr_labels.append(f"{label_text[:15]}\n({stat_type})")
+                    else: st.warning(f"Missing '{stat_type}' for '{p_group}'."); valid_selection = False
 
             if corr_vars_cols and valid_selection and len(corr_vars_cols) > 1:
                 correlation_matrix = df[corr_vars_cols].corr()
                 fig_width = max(8, len(corr_vars_cols) * 0.9); fig_height = max(6, len(corr_vars_cols) * 0.8)
                 fig_corr, ax_corr = plt.subplots(figsize=(fig_width, fig_height))
-                sns.heatmap(
-                    correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", linewidths=.5, linecolor='lightgray',
-                    ax=ax_corr, xticklabels=corr_labels, yticklabels=corr_labels, annot_kws={"size": 9}
-                )
+                sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap="coolwarm", linewidths=.5, linecolor='lightgray', ax=ax_corr, xticklabels=corr_labels, yticklabels=corr_labels, annot_kws={"size": 9})
                 ax_corr.set_title("Correlation Matrix Heatmap", fontsize=14)
                 plt.xticks(rotation=45, ha='right', fontsize=10); plt.yticks(rotation=0, fontsize=10)
                 plt.tight_layout(pad=2.0); st.pyplot(fig_corr)
-            elif len(corr_vars_cols) <= 1: st.warning("Not enough valid columns found (need >= 2).")
+            elif len(corr_vars_cols) <= 1: st.warning("Need >= 2 valid columns for correlation.")
         else: st.info("Please select at least 2 parameters.")
     else: st.warning("Not enough parameters available for correlation.")
 
@@ -429,7 +350,7 @@ elif selected_page == "Temporal":
         st.markdown("---", unsafe_allow_html=True)
 
         if temporal_group_key:
-            if temporal_group_key not in param_groups: st.error(f"Selected parameter group '{temporal_group_key}' is invalid.")
+            if temporal_group_key not in param_groups: st.error(f"Invalid group '{temporal_group_key}'.")
             else:
                 group_cols_info = param_groups[temporal_group_key]
                 required_cols = [group_cols_info[stat] for stat in ['Max', 'Mean', 'Min'] if stat in group_cols_info]
@@ -441,8 +362,7 @@ elif selected_page == "Temporal":
                     ax_temporal.set_title(plot_title_temp, fontsize=14)
                     for col in ts_rolling_avg.columns:
                         prefix = col.split('_')[0]
-                        # **MODIFICATION:** Removed marker='o' for smoother line
-                        if prefix in ['Max', 'Mean', 'Min']: sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal, linewidth=1.5) # Removed marker
+                        if prefix in ['Max', 'Mean', 'Min']: sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal, linewidth=1.5)
                     min_col = group_cols_info.get('Min'); max_col = group_cols_info.get('Max')
                     if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
                          ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
@@ -455,7 +375,7 @@ elif selected_page == "Temporal":
 # --- Page 5: Statistics ---
 elif selected_page == "Statistics":
     st.title("📉 Statistical Hypothesis Testing")
-    test_type = st.selectbox("Select Analysis Type", ["T-Test", "ANOVA", "Regression"], key="stats_test_type_select_main") # Simplified labels
+    test_type = st.selectbox("Select Analysis Type", ["T-Test", "ANOVA", "Regression"], key="stats_test_type_select_main")
     st.markdown("---", unsafe_allow_html=True)
 
     if "T-Test" in test_type:
@@ -561,3 +481,4 @@ elif selected_page == "Statistics":
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+
