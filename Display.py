@@ -170,44 +170,6 @@ def normalize_value(value, overall_min, overall_max):
     normalized = (np.clip(value, overall_min, overall_max) - overall_min) / (overall_max - overall_min)
     return normalized
 
-# --- Statistical Functions (Kept for potential future use or other tabs if needed) ---
-def run_ttest(data, variable, group_var):
-    """Performs an independent two-sample t-test."""
-    groups = data[group_var].dropna().unique()
-    if len(groups) != 2: return None, f"T-Test requires 2 groups. Found {len(groups)}."
-    group_data = [data.loc[data[group_var] == grp, variable].dropna() for grp in groups]
-    if any(len(d) < 3 for d in group_data): return None, f"T-Test requires >= 3 valid samples per group."
-    try:
-        t_stat, p_value = stats.ttest_ind(*group_data, nan_policy='omit')
-        return (t_stat, p_value), None
-    except Exception as e: return None, f"T-Test failed: {str(e)}"
-
-def run_anova(data, variable, group_var):
-    """Performs a one-way ANOVA test."""
-    if data[group_var].dropna().nunique() < 2: return None, f"ANOVA requires >= 2 groups."
-    try:
-        clean_data = data.dropna(subset=[variable, group_var])
-        if clean_data[group_var].nunique() < 2: return None, f"Fewer than 2 groups remain after removing NaNs."
-        if clean_data.groupby(group_var)[variable].nunique().min() < 2 and clean_data[variable].nunique() > 1 : st.warning(f"Warning: '{variable}' has no variation in >= 1 group.")
-        elif clean_data[variable].nunique() < 2: return None, f"'{variable}' has insufficient variation overall."
-        model = ols(f'`{variable}` ~ C(`{group_var}`)', data=clean_data).fit()
-        anova_table = sm.stats.anova_lm(model, typ=2)
-        return anova_table, None
-    except ValueError as ve: return None, f"ANOVA failed: {str(ve)}"
-    except Exception as e: return None, f"ANOVA failed: {str(e)}"
-
-def run_pearson_correlation(data, var1, var2):
-    """Calculates Pearson correlation coefficient and p-value between two variables."""
-    try:
-        data_clean = data[[var1, var2]].dropna()
-        if len(data_clean) < 3:
-            return None, f"Correlation requires at least 3 non-missing pairs of data points for '{var1}' and '{var2}'. Found {len(data_clean)}."
-        if data_clean[var1].nunique() < 2 or data_clean[var2].nunique() < 2:
-            return None, f"Both variables ('{var1}', '{var2}') must have some variation (at least 2 unique values)."
-        corr_coef, p_value = stats.pearsonr(data_clean[var1], data_clean[var2])
-        return (corr_coef, p_value), None
-    except Exception as e: return None, f"Pearson correlation failed for '{var1}' vs '{var2}': {str(e)}"
-
 # --- PDF Generation Function ---
 def create_dashboard_pdf(param_name, fig, stats_dict):
     """Generates a PDF report for the dashboard."""
@@ -403,84 +365,45 @@ elif selected_page == "Temporal":
 
 # --- Page 5: Statistics ---
 elif selected_page == "Statistics":
-    st.title("📉 Statistical Summaries & Visualizations") # Updated title
+    st.title("📉 Data Distribution Overview") # Updated title
 
-    # **MODIFICATION:** Updated analysis types
-    analysis_options = ["Descriptive Statistics", "Box Plot Visualization"]
-    analysis_type = st.selectbox( # Renamed variable for clarity
-        "Select Analysis Type",
-        analysis_options,
-        key="stats_analysis_type_select" # New key for this selectbox
-    )
+    # **MODIFICATION:** Removed analysis type selection. Directly show box plots.
+    st.subheader("Box Plots for All Numerical Variables")
+    st.markdown("Box plots visually summarize the distribution of each numerical variable, showing the median, quartiles, and potential outliers.")
     st.markdown("---", unsafe_allow_html=True)
 
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+    # Exclude any ID or index-like columns if they are numeric but not meaningful for distribution
+    # For this dataset, all numeric columns seem relevant for a box plot.
+    
     if not numeric_columns:
-        st.warning("No numeric columns found in the dataset to perform statistical analysis.")
+        st.warning("No numeric columns found in the dataset to generate box plots.")
     else:
-        # --- Descriptive Statistics Section ---
-        if analysis_type == "Descriptive Statistics":
-            st.subheader("Descriptive Statistics")
-            desc_var = st.selectbox("Select Variable", numeric_columns, key="desc_stats_var_select")
+        # Determine number of columns for layout (e.g., 2 or 3 per row)
+        num_plot_cols = min(len(numeric_columns), 2) # Display up to 2 plots per row
+        
+        plot_cols = st.columns(num_plot_cols)
+        col_idx = 0
+
+        for i, col_name in enumerate(numeric_columns):
+            if col_name == 'Date': continue # Should already be excluded by select_dtypes, but good check
+
+            with plot_cols[col_idx]:
+                try:
+                    fig_box, ax_box = plt.subplots(figsize=(6, 4)) # Smaller individual plots
+                    sns.boxplot(y=df[col_name], ax=ax_box, width=0.5)
+                    ax_box.set_title(f"Distribution of {col_name.replace('_', ' ').title()}", fontsize=12)
+                    ax_box.set_ylabel("") # Y-label is often redundant with title for single box plot
+                    plt.tight_layout()
+                    st.pyplot(fig_box)
+                    plt.close(fig_box) # Close figure
+                except Exception as e:
+                    st.error(f"Error generating box plot for {col_name}: {e}")
             
-            # Optional: Grouping variable
-            potential_groupers = [col for col in df.columns if df[col].nunique() < 20 and col != desc_var and df[col].dtype == 'object'] # Suggest categorical columns
-            potential_groupers.insert(0, "None (Overall Statistics)")
+            col_idx = (col_idx + 1) % num_plot_cols # Cycle through columns
+            if col_idx == 0 and i < len(numeric_columns) -1 : # Add a separator after each row of plots (except the last)
+                 st.markdown("---", unsafe_allow_html=True)
 
-            desc_group_var = st.selectbox("Group by (Optional)", potential_groupers, key="desc_stats_group_select")
-
-            if desc_var:
-                if st.button("Calculate Statistics", key="desc_stats_run_button"):
-                    if desc_group_var != "None (Overall Statistics)":
-                        if desc_group_var in df.columns:
-                            try:
-                                desc_table = df.groupby(desc_group_var)[desc_var].describe()
-                                st.write(f"Descriptive statistics for '{desc_var}' grouped by '{desc_group_var}':")
-                                st.dataframe(desc_table.style.format("{:.2f}"))
-                            except Exception as e: st.error(f"Error calculating grouped statistics: {e}")
-                        else: st.error(f"Grouping variable '{desc_group_var}' not found.")
-                    else:
-                        try:
-                            desc_table = df[desc_var].describe()
-                            st.write(f"Overall descriptive statistics for '{desc_var}':")
-                            st.dataframe(desc_table.to_frame().style.format("{:.2f}"))
-                        except Exception as e: st.error(f"Error calculating overall statistics: {e}")
-            else: st.info("Please select a variable.")
-
-        # --- Box Plot Section ---
-        elif analysis_type == "Box Plot Visualization":
-            st.subheader("Box Plot")
-            
-            box_numeric_var = st.selectbox("Select Numerical Variable for Box Plot", numeric_columns, key="box_numeric_var_select")
-            
-            # Optional: Grouping variable for box plot
-            # Suggest categorical columns for grouping
-            potential_box_groupers = [col for col in df.columns if df[col].nunique() < 10 and df[col].dtype == 'object' and col != box_numeric_var]
-            potential_box_groupers.insert(0, "None (Single Box Plot)")
-
-            box_group_var = st.selectbox("Group by (Optional Categorical Variable)", potential_box_groupers, key="box_group_var_select")
-
-            if box_numeric_var:
-                if st.button("Generate Box Plot", key="box_plot_run_button"):
-                    try:
-                        fig_box, ax_box = plt.subplots(figsize=(10, 6)) # Adjust size as needed
-                        if box_group_var != "None (Single Box Plot)" and box_group_var in df.columns:
-                            sns.boxplot(x=df[box_group_var], y=df[box_numeric_var], ax=ax_box)
-                            ax_box.set_title(f"Box Plot of {box_numeric_var} by {box_group_var}", fontsize=14)
-                            ax_box.set_xlabel(box_group_var.replace("_", " ").title(), fontsize=12)
-                        else:
-                            sns.boxplot(y=df[box_numeric_var], ax=ax_box)
-                            ax_box.set_title(f"Box Plot of {box_numeric_var}", fontsize=14)
-                        
-                        ax_box.set_ylabel(box_numeric_var.replace("_", " ").title(), fontsize=12)
-                        plt.xticks(rotation=45, ha='right')
-                        plt.tight_layout()
-                        st.pyplot(fig_box)
-                        plt.close(fig_box) # Close figure
-                    except Exception as e:
-                        st.error(f"Error generating box plot: {e}")
-            else:
-                st.info("Please select a numerical variable for the box plot.")
 
 # --- Footer ---
 if selected_page:
