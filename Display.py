@@ -235,8 +235,9 @@ def create_gauge(value, min_val, max_val, title):
     if pd.isna(value) or pd.isna(min_val) or pd.isna(max_val):
         fig = go.Figure()
         fig.update_layout(
-            title={'text': f"{title}<br><i>Data Unavailable</i>", 'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top', 'font': {'size': 14}},
-            height=180, margin=dict(l=15, r=15, t=40, b=10) # Adjusted margins for smaller size
+            title={'text': f"{title}<br><i>Data Unavailable</i>", 'y':0.9, 'x':0.5, 'xanchor': 'center', 'yanchor': 'top', 'font': {'size': 12}}, # Smaller font
+            height=150, # **REDUCED HEIGHT**
+            margin=dict(l=10, r=10, t=35, b=10) # Adjusted margins
         )
         return fig
 
@@ -245,20 +246,20 @@ def create_gauge(value, min_val, max_val, title):
     fig = go.Figure(go.Indicator(
         mode = "gauge+number",
         value = value,
-        number = {'suffix': "", 'font': {'size': 28}}, # Adjust number font size
+        number = {'suffix': "", 'font': {'size': 24}}, # **REDUCED NUMBER FONT SIZE**
         domain = {'x': [0, 1], 'y': [0, 1]},
-        title = {'text': title, 'font': {'size': 14}}, # Adjust title font size
+        title = {'text': title, 'font': {'size': 12}}, # **REDUCED TITLE FONT SIZE**
         gauge = {
             'axis': {'range': [min_val, max_val], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': "#1a5276", 'thickness': 0.4}, # Adjust bar thickness
+            'bar': {'color': "#1a5276", 'thickness': 0.4},
             'bgcolor': "white",
-            'borderwidth': 1, # Reduced borderwidth
+            'borderwidth': 1,
             'bordercolor': "#e0e0e0",
             'steps': [{'range': [min_val, max_val], 'color': '#eaf2f8'}],
             }))
     fig.update_layout(
-        height=180, # Reduced height for stacked gauges
-        margin=dict(l=15, r=15, t=40, b=10) # Adjusted margins
+        height=150, # **REDUCED HEIGHT**
+        margin=dict(l=10, r=10, t=35, b=10) # Adjusted margins
         )
     return fig
 
@@ -318,19 +319,20 @@ elif selected_page == "Dashboard":
 
         if not dashboard_df.empty:
 
-            # **MODIFICATION:** Create columns for Plot (left) and Gauges (right)
+            # Create columns for Plot (left) and Gauges (right)
             plot_col, gauge_col = st.columns([3, 1]) # Adjust ratio as needed (e.g., 3:1)
 
             with plot_col:
                 # Visualizations - Trend Plot is now central
                 st.subheader("Trend Over Time")
-                fig_line, ax_line = plt.subplots(figsize=(12, 5)) # Adjust figsize if needed
+                fig_line, ax_line = plt.subplots(figsize=(12, 5))
                 plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
                 ax_line.set_title(plot_title, fontsize=14)
                 for prefix in ['Max', 'Mean', 'Min']:
                     if prefix in group_cols_info:
                         col_name = group_cols_info[prefix]
-                        sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, marker='o', markersize=3, linestyle='-', linewidth=1.5)
+                        # **MODIFICATION:** Removed marker='o' for smoother line
+                        sns.lineplot(data=dashboard_df, x='Date', y=col_name, label=prefix, ax=ax_line, linestyle='-', linewidth=1.5) # Removed marker
 
                 ax_line.set_ylabel(selected_group_key_dashboard.replace('_', ' '), fontsize=12)
                 ax_line.set_xlabel("Date", fontsize=12)
@@ -341,7 +343,7 @@ elif selected_page == "Dashboard":
 
             with gauge_col:
                 # Display Metrics using Plotly Gauges (stacked vertically)
-                st.subheader(f"Key Statistics") # Simplified title
+                st.subheader(f"Key Statistics")
                 # Calculate overall metrics
                 overall_max_val = dashboard_df[group_cols_info['Max']].max()
                 overall_min_val = dashboard_df[group_cols_info['Min']].min()
@@ -439,7 +441,8 @@ elif selected_page == "Temporal":
                     ax_temporal.set_title(plot_title_temp, fontsize=14)
                     for col in ts_rolling_avg.columns:
                         prefix = col.split('_')[0]
-                        if prefix in ['Max', 'Mean', 'Min']: sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal)
+                        # **MODIFICATION:** Removed marker='o' for smoother line
+                        if prefix in ['Max', 'Mean', 'Min']: sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal, linewidth=1.5) # Removed marker
                     min_col = group_cols_info.get('Min'); max_col = group_cols_info.get('Max')
                     if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
                          ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
@@ -558,4 +561,3 @@ elif selected_page == "Statistics":
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
-
