@@ -402,19 +402,13 @@ with tab4:
 with tab5:
     st.title("🌿 Green Cover Visualization")
     
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        st.markdown("""
-            ### Vegetation Monitoring
-            This time-lapse video shows changes in green cover
-            over the protected area.
-            """)
-            
-    with col2:
-        try:
-            video_file = open(VIDEO_PATH, 'rb')
-            video_bytes = video_file.read()
-            
+    try:
+        video_file = open(VIDEO_PATH, 'rb')
+        video_bytes = video_file.read()
+        
+        # Create centered layout
+        col1, col2, col3 = st.columns([1, 6, 1])
+        with col2:
             st.video(video_bytes, format="video/mp4", **VIDEO_CONFIG)
             
             st.markdown("""
