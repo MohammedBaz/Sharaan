@@ -9,7 +9,6 @@ import seaborn as sns
 import geopandas as gpd
 from shapely.geometry import Point
 import random
-import matplotlib.colors
 from folium.plugins import HeatMap
 
 # Define the GeoJSON URL
@@ -24,17 +23,21 @@ def load_geojson(url):
 
 @st.cache_data
 def generate_random_time_series(variable, n_points=100):
-    """Generates random time series data."""
-    time = pd.to_datetime(pd.date_range(start='2024-01-01', periods=n_points))
-    if variable == 'Temperature':
-        data = np.random.uniform(10, 35, n_points)
-    elif variable == 'Precipitation':
-        data = np.random.uniform(0, 15, n_points)
-    elif variable == 'Wind Speed':
-        data = np.random.uniform(0, 20, n_points)
+    """Generates random time series data for selected variable."""
+    time = pd.date_range(start='2024-01-01', periods=n_points, freq='D')
+    
+    if variable == 'Temperature (°C)':
+        data = np.random.normal(25, 5, n_points).round(1)
+    elif variable == 'Humidity (%)':
+        data = np.random.uniform(20, 100, n_points).round(1)
+    elif variable == 'Wind Speed (m/s)':
+        data = np.random.weibull(2, n_points).round(1)
+    elif variable == 'Precipitation (mm)':
+        data = np.random.gamma(2, 2, n_points).round(1)
     else:
         data = np.random.rand(n_points)
-    return pd.DataFrame({'Time': time, variable: data})
+    
+    return pd.DataFrame({'Date': time, variable: data})
 
 def generate_random_points_in_polygon(polygon, num_points=2000):
     """Generates random points within a Shapely polygon."""
@@ -47,33 +50,38 @@ def generate_random_points_in_polygon(polygon, num_points=2000):
     return points
 
 @st.cache_data
-def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polygon=2000):
+def generate_spatial_intensity(variable):
+    """Returns intensity ranges based on selected variable."""
+    ranges = {
+        'Temperature (°C)': (0.5, 1.0),
+        'Humidity (%)': (0.3, 0.9),
+        'Wind Speed (m/s)': (0.4, 1.0),
+        'Precipitation (mm)': (0.2, 0.8)
+    }
+    return ranges.get(variable, (0, 1))
+
+@st.cache_data
+def generate_heatmap_data(geojson, variable, num_points=2000):
     """Generates heatmap data with variable-specific intensities."""
-    features = geojson['features']
-    point_features = []
-    gdf = gpd.GeoDataFrame.from_features(features)
-
-    for _, feature in gdf.iterrows():
-        geom = feature.geometry
+    gdf = gpd.GeoDataFrame.from_features(geojson['features'])
+    points = []
+    min_intensity, max_intensity = generate_spatial_intensity(variable)
+    
+    for _, row in gdf.iterrows():
+        geom = row.geometry
         polygons = geom.geoms if geom.geom_type == 'MultiPolygon' else [geom]
-
-        for polygon in polygons:
-            random_points = generate_random_points_in_polygon(polygon, num_points_per_polygon)
-            for lat, lon in random_points:
-                if variable == 'Temperature':
-                    intensity = np.random.uniform(0.5, 1.0)
-                elif variable == 'Precipitation':
-                    intensity = np.random.uniform(0.2, 0.8)
-                elif variable == 'Wind Speed':
-                    intensity = np.random.uniform(0.4, 0.9)
-                else:
-                    intensity = np.random.rand()
-                point_features.append({
+        
+        for poly in polygons:
+            coords = generate_random_points_in_polygon(poly, num_points)
+            for lat, lon in coords:
+                intensity = random.uniform(min_intensity, max_intensity)
+                points.append({
                     "type": "Feature",
-                    "geometry": {"type": "Point", "coordinates": [float(lon), float(lat)]},
-                    "properties": {"intensity": float(intensity)}
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {"intensity": intensity}
                 })
-    return {"type": "FeatureCollection", "features": point_features}
+    
+    return {"type": "FeatureCollection", "features": points}
 
 # Load GeoJSON data
 sharaan_geojson = load_geojson(geojson_url)
@@ -81,69 +89,84 @@ gdf = gpd.GeoDataFrame.from_features(sharaan_geojson["features"])
 bounds = gdf.total_bounds
 center_lat, center_lon = (bounds[1] + bounds[3])/2, (bounds[0] + bounds[2])/2
 
-st.title("Climate Data for Decision Support in Sharaan Protected Area")
+# Streamlit App
+st.title("Sharaan Protected Area Climate Dashboard")
 
-# Sidebar for variable selection
-st.sidebar.header("Select Variable")
-selected_variable = st.sidebar.selectbox("Choose a climate variable", 
-                                       ['Temperature', 'Precipitation', 'Wind Speed'])
+# Parameter Selection
+variables = [
+    'Temperature (°C)',
+    'Humidity (%)',
+    'Wind Speed (m/s)',
+    'Precipitation (mm)'
+]
+selected_var = st.sidebar.selectbox("Select Climate Parameter", variables)
 
-# Generate data
-time_series_data = generate_random_time_series(selected_variable)
-heatmap_geojson_data = generate_random_spatial_data_geojson(sharaan_geojson, selected_variable)
+# Generate Data
+ts_data = generate_random_time_series(selected_var)
+heatmap_data = generate_heatmap_data(sharaan_geojson, selected_var)
 
-# --- Time Series Plot ---
-# --- Heatmap Visualization ---
-st.subheader(f"{selected_variable} Intensity Heatmap")
+# Time Series Plot
+st.subheader(f"{selected_var} Time Series")
+fig, ax = plt.subplots(figsize=(10, 4))
+sns.lineplot(x='Date', y=selected_var, data=ts_data, ax=ax)
+ax.set_title(f"Daily {selected_var} Variation")
+ax.grid(True)
+st.pyplot(fig)
 
-# Create base map
+# Heatmap Visualization
+st.subheader(f"{selected_var} Spatial Distribution")
+
+# Create Folium map
 m = folium.Map(location=[center_lat, center_lon], zoom_start=10, tiles="cartodbpositron")
 
-# Add Sharaan boundary with PROPERLY FORMATTED STYLING
+# Add protected area boundary
 folium.GeoJson(
     sharaan_geojson,
     style_function=lambda x: {
-        'fill_color': '#800080',  # Snake_case keys
-        'color': '#FF0000',
+        'fillColor': '#4a148c',
+        'color': '#d81b60',
         'weight': 2,
-        'fill_opacity': 0.2
+        'fillOpacity': 0.2
     }
 ).add_to(m)
 
-# Prepare heatmap data with coordinate validation
-heat_data = []
-for feature in heatmap_geojson_data.get('features', []):
+# Prepare heatmap data
+heat_points = []
+for feature in heatmap_data['features']:
     try:
-        coords = feature['geometry']['coordinates']
-        if len(coords) != 2:
-            continue
-        lon, lat = map(float, coords)
-        intensity = float(feature['properties']['intensity'])
-        heat_data.append([lat, lon, intensity])
-    except (KeyError, TypeError, ValueError) as e:
+        lon = feature['geometry']['coordinates'][0]
+        lat = feature['geometry']['coordinates'][1]
+        intensity = feature['properties']['intensity']
+        heat_points.append([lat, lon, intensity])
+    except (KeyError, IndexError):
         continue
 
-# Add heatmap layer with STRING-BASED GRADIENT KEYS
-if heat_data:
+# Add heatmap layer with corrected gradient
+if heat_points:
     HeatMap(
-        heat_data,
-        radius=20,
-        blur=15,
+        heat_points,
+        radius=25,
+        blur=20,
         min_opacity=0.4,
         gradient={
-            '0.4': 'blue',    # String keys
-            '0.6': 'lime',
-            '0.75': 'yellow',
+            '0.4': 'blue',
+            '0.6': 'green',
+            '0.8': 'yellow',
             '1.0': 'red'
         }
     ).add_to(m)
 
 # Display map
-st_folium(m, width=700, height=500)
+st_folium(m, width=800, height=500)
 
-# Display map with error handling
-try:
-    st_folium(m, width=700, height=500)
-except Exception as e:
-    st.error("Error rendering map. Please try refreshing the page.")
-    st.error(str(e))
+# Data Statistics
+st.subheader("Data Summary")
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.metric("Average", f"{ts_data[selected_var].mean():.1f}")
+with col2:
+    st.metric("Maximum", f"{ts_data[selected_var].max():.1f}")
+with col3:
+    st.metric("Minimum", f"{ts_data[selected_var].min():.1f}")
+
+st.write("Note: All data shown is simulated for demonstration purposes.")
