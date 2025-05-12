@@ -4,28 +4,24 @@ import numpy as np
 import requests
 import folium
 from streamlit_folium import st_folium
+from folium.plugins import HeatMap
 import matplotlib.pyplot as plt
 import seaborn as sns
 import geopandas as gpd
 from datetime import datetime
+from shapely.geometry import Point
+import random
 
 # Custom CSS styling
 st.markdown("""
 <style>
-    /* Main container */
-    .main {
-        background-color: #f8f9fa;
-    }
-    
-    /* Titles */
-    .header-text {
+    .main { background-color: #f8f9fa; }
+    .header-text { 
         color: #2c3e50;
         font-size: 2.5rem !important;
         font-weight: 700;
         margin-bottom: 1rem;
     }
-    
-    /* Metrics cards */
     .metric-card {
         background: white;
         border-radius: 10px;
@@ -33,15 +29,11 @@ st.markdown("""
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
         margin: 10px;
     }
-    
-    /* Map container */
     .map-container {
         border-radius: 15px;
         overflow: hidden;
         box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
-    
-    /* Time series chart */
     .chart-container {
         background: white;
         border-radius: 15px;
@@ -128,10 +120,17 @@ with tab2:
     m = folium.Map(location=[25.5, 37.5], zoom_start=9, 
                   tiles=map_style if map_style != "CartoDB Positron" else "CartoDB positron")
     
-    # Add heatmap layer
+    # Generate heatmap data
     heat_data = [[25.3 + np.random.rand()/2, 37.2 + np.random.rand()/2, np.random.rand()] 
                 for _ in range(200)]
-    HeatMap(heat_data, radius=15, blur=20, gradient={0.4: 'blue', 0.65: 'lime', 1: 'red'}).add_to(m)
+    
+    # Add heatmap layer
+    HeatMap(
+        heat_data,
+        radius=15,
+        blur=20,
+        gradient={0.4: 'blue', 0.65: 'lime', 1: 'red'}
+    ).add_to(m)
     
     # Add protected area boundary
     folium.GeoJson(
