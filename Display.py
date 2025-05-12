@@ -139,7 +139,8 @@ with tab1:
     with st.sidebar:
         st.header("Controls")
         numeric_cols = df.select_dtypes(include=np.number).columns.tolist()
-        selected_var = st.selectbox("Parameter", numeric_cols, index=numeric_cols.index('Rainfall') if 'Rainfall' in numeric_cols else 0)
+        selected_var = st.selectbox("Parameter", numeric_cols, 
+                                  index=numeric_cols.index('Rainfall') if 'Rainfall' in numeric_cols else 0)
         date_range = st.date_input("Date Range", 
                                  value=(df.Date.min().date(), df.Date.max().date()),
                                  min_value=df.Date.min().date(),
@@ -192,7 +193,23 @@ with tab1:
 with tab2:
     # --- Temporal Analysis Tab ---
     st.title("⏳ Temporal Analysis")
-    # (Add additional time-series analysis components here)
+    st.subheader("Detailed Time Series Analysis")
+    
+    analysis_var = st.selectbox("Select Analysis Variable", 
+                              df.select_dtypes(include=np.number).columns.tolist())
+    
+    # Rolling Average Control
+    window_size = st.slider("Rolling Average Window (Days)", 1, 90, 7)
+    
+    # Process data
+    ts_data = filtered_df.set_index('Date')[analysis_var].rolling(window=window_size).mean()
+    
+    # Create plot
+    fig, ax = plt.subplots(figsize=(12, 6))
+    ts_data.plot(ax=ax, title=f"{analysis_var} with {window_size}-Day Rolling Average")
+    ax.set_ylabel(analysis_var)
+    ax.grid(True, alpha=0.3)
+    st.pyplot(fig)
 
 with tab3:
     # --- Statistical Testing Tab ---
@@ -252,22 +269,31 @@ with tab3:
             y_var = st.selectbox("Dependent Variable", numeric_vars)
         
         if st.button("Run Regression"):
-        model, error = run_regression(df, x_var, y_var)
-        if error:
-            st.error(error)
-        else:
-            st.subheader("Regression Results")
-            try:
-                st.text(model.summary().as_text())
-            except Exception as summary_error:
-                st.error("Could not generate full summary. Key metrics:")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("R-squared", f"{model.rsquared:.2f}")
-                    st.metric("Coefficient", f"{model.params[1]:.2f}")
-                with col2:
-                    st.metric("P-value", f"{model.pvalues[1]:.4f}")
-                    st.metric("Observations", model.nobs)
+            model, error = run_regression(df, x_var, y_var)
+            if error:
+                st.error(error)
+            else:
+                st.subheader("Regression Results")
+                try:
+                    st.text(model.summary().as_text())
+                except Exception as summary_error:
+                    st.error("Could not generate full summary. Key metrics:")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.metric("R-squared", f"{model.rsquared:.2f}")
+                        st.metric("Coefficient", f"{model.params[1]:.2f}")
+                    with col2:
+                        st.metric("P-value", f"{model.pvalues[1]:.4f}")
+                        st.metric("Observations", model.nobs)
+                
+                # Diagnostic plots
+                st.subheader("Diagnostic Plots")
+                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+                sm.qqplot(model.resid, line='s', ax=ax1)
+                sns.scatterplot(x=model.fittedvalues, y=model.resid, ax=ax2)
+                ax2.axhline(0, color='red', linestyle='--')
+                st.pyplot(fig)
+
 # --- Footer ---
 st.markdown("---")
 st.caption(f"Data updated: {df.Date.max().strftime('%Y-%m-%d')} | Protected Area Monitoring System")
