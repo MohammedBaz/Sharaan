@@ -1,41 +1,45 @@
-import folium
-from streamlit_folium import st_folium
+# Add missing imports at the top
+import matplotlib
+import matplotlib.colors
 
-def render_sharaan_map(geojson_data, spatial_data=None):
-    """Renders a Folium map of the Sharaan area with optional spatial data overlay."""
-    if not geojson_data or 'features' not in geojson_data:
-        return None
+# In generate_random_spatial_data_geojson:
+@st.cache_data
+def generate_random_spatial_data_geojson(geojson, variable, num_points_per_polygon=2000):
+    """Generates GeoJSON-like data for heatmap visualization."""
+    features = geojson['features']
+    point_features = []
+    gdf = gpd.GeoDataFrame.from_features(features)  # Use existing GeoJSON data
 
-    # Calculate the center of the Sharaan area
-    first_polygon_coords = geojson_data['features'][0]['geometry']['coordinates'][0]
-    center_lat = sum(coord[1] for coord in first_polygon_coords) / len(first_polygon_coords)
-    center_lon = sum(coord[0] for coord in first_polygon_coords) / len(first_polygon_coords)
+    for _, feature in gdf.iterrows():
+        geom = feature.geometry
+        if geom.geom_type == 'MultiPolygon':
+            polygons = list(geom.geoms)
+        else:
+            polygons = [geom]
 
-    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+        for polygon in polygons:
+            random_points = generate_random_points_in_polygon(polygon, num_points_per_polygon)
+            for lat, lon in random_points:
+                if variable == 'Temperature':
+                    intensity = np.random.uniform(0.5, 1.0)
+                elif variable == 'Precipitation':
+                    intensity = np.random.uniform(0.2, 0.8)
+                elif variable == 'Wind Speed':
+                    intensity = np.random.uniform(0.4, 0.9)
+                else:
+                    intensity = np.random.rand()
+                point_features.append({
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [lon, lat]},
+                    "properties": {"intensity": intensity}
+                })
+    return {"type": "FeatureCollection", "features": point_features}
 
-    # Add GeoJSON layer for Sharaan boundary
-    folium.GeoJson(geojson_data, style_function=lambda feature: {
-        'fillColor': 'purple',
-        'color': 'red',
-        'weight': 2,
-        'fillOpacity': 0.2
-    }).add_to(m)
-
-    # Add spatial data as circle markers if provided
-    if spatial_data is not None and not spatial_data.empty:
-        for index, row in spatial_data.iterrows():
-            folium.CircleMarker(
-                location=[row['latitude'], row['longitude']],
-                radius=row['value'] * 2,
-                color='red',
-                fill=True,
-                fill_color='orangered',
-                fill_opacity=0.6
-            ).add_to(m)
-
-    return m
-
-def display_folium_map(folium_map, width=700, height=500):
-    """Displays a Folium map in Streamlit."""
-    if folium_map:
-        st_folium(folium_map, width=width, height=height)
+# Heatmap styling adjustment
+def heatmap_style(feature):
+    intensity = feature['properties']['intensity']
+    # Use actual variable range or dynamic normalization
+    normalized_intensity = (intensity - 0.2) / (1.0 - 0.2)  # Adjust based on variable
+    color = plt.cm.viridis(normalized_intensity)
+    hex_color = matplotlib.colors.rgb2hex(color)
+    return {'radius': 8, 'fillColor': hex_color, 'color': hex_color, 'fillOpacity': 0.7}
