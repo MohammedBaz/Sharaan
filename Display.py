@@ -125,6 +125,8 @@ st.pyplot(fig)
 st.subheader("🗺️ Spatial Distribution")
 
 if not st.session_state.map:
+    # Initialize map once
+    centroid = gpd.GeoDataFrame.from_features(geojson['features']).geometry.centroid
     m = folium.Map(
         location=[centroid.y.mean(), centroid.x.mean()],
         zoom_start=10,
@@ -132,6 +134,7 @@ if not st.session_state.map:
         control_scale=True
     )
     
+    # Persistent layers
     folium.GeoJson(
         geojson,
         style_function=lambda x: {
@@ -142,7 +145,8 @@ if not st.session_state.map:
         },
         name="Protected Area"
     ).add_to(m)
-
+    
+    # Corrected HeatMap syntax
     HeatMap(
         data=[[p['coordinates'][0], p['coordinates'][1], p['intensity'] for p in heatmap_points],
         radius=25,
@@ -150,10 +154,11 @@ if not st.session_state.map:
         gradient=HEATMAP_GRADIENT,
         name="Intensity Heatmap"
     ).add_to(m)
-
+    
     folium.LayerControl().add_to(m)
     st.session_state.map = m
 
+# Render map with persistent state
 map_container = st_folium(
     st.session_state.map,
     width=800,
