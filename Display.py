@@ -196,18 +196,20 @@ def run_anova(data, variable, group_var):
     except ValueError as ve: return None, f"ANOVA failed: {str(ve)}"
     except Exception as e: return None, f"ANOVA failed: {str(e)}"
 
-def run_regression(data, x_var, y_var):
-    """Performs a simple linear regression."""
+# **NEW** Function for Pearson Correlation
+def run_pearson_correlation(data, var1, var2):
+    """Calculates Pearson correlation coefficient and p-value between two variables."""
     try:
-        data_clean = data[[x_var, y_var]].dropna()
-        if len(data_clean) < 10: return None, f"Regression requires >= 10 samples. Found {len(data_clean)}."
-        if data_clean[x_var].nunique() < 2: return None, f"'{x_var}' has insufficient variation."
-        if data_clean[y_var].nunique() < 2: return None, f"'{y_var}' has insufficient variation."
-        X = sm.add_constant(data_clean[x_var])
-        model = sm.OLS(data_clean[y_var], X).fit()
-        return model, None
-    except Exception as e: return None, f"Regression failed: {str(e)}"
+        data_clean = data[[var1, var2]].dropna()
+        if len(data_clean) < 3: # Pearson correlation needs at least 3 pairs
+            return None, f"Correlation requires at least 3 non-missing pairs of data points for '{var1}' and '{var2}'. Found {len(data_clean)}."
+        if data_clean[var1].nunique() < 2 or data_clean[var2].nunique() < 2:
+            return None, f"Both variables ('{var1}', '{var2}') must have some variation (at least 2 unique values)."
 
+        corr_coef, p_value = stats.pearsonr(data_clean[var1], data_clean[var2])
+        return (corr_coef, p_value), None
+    except Exception as e:
+        return None, f"Pearson correlation failed for '{var1}' vs '{var2}': {str(e)}"
 
 # --- PDF Generation Function ---
 def create_dashboard_pdf(param_name, fig, stats_dict):
@@ -249,11 +251,10 @@ def create_dashboard_pdf(param_name, fig, stats_dict):
     img_buffer.close()
 
     # Return PDF as bytes
-    # **FIX:** Convert bytearray (if returned by FPDF) to bytes
     pdf_output = pdf.output(dest='S')
     if isinstance(pdf_output, bytearray):
         return bytes(pdf_output)
-    return pdf_output # Assuming it's already bytes if not bytearray
+    return pdf_output
 
 
 # --- Load Data ---
@@ -268,8 +269,6 @@ if not param_groups:
 st.sidebar.title("EcoMonitor Navigation")
 pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics"]
 selected_page = st.sidebar.radio("Go to", pages)
-
-# --- REMOVED Download Button for Full CSV from Sidebar ---
 
 
 # --- Main Page Content (Conditional Display) ---
@@ -309,13 +308,12 @@ elif selected_page == "Dashboard":
     # --- Data Filtering and Display ---
     if selected_group_key_dashboard:
         group_cols_info = param_groups[selected_group_key_dashboard]
-        dashboard_df = df # Use the whole dataframe
+        dashboard_df = df
 
         if not dashboard_df.empty:
 
             # Trend Plot
             st.subheader("Trend Over Time")
-            # Create figure object explicitly to pass to PDF function
             fig_line, ax_line = plt.subplots(figsize=(12, 5))
             plot_title = f"{selected_group_key_dashboard.replace('_', ' ').title()} Trend (Overall)"
             ax_line.set_title(plot_title, fontsize=14)
@@ -329,7 +327,7 @@ elif selected_page == "Dashboard":
             ax_line.legend(title="Statistic")
             plt.xticks(rotation=30, ha='right')
             plt.tight_layout()
-            st.pyplot(fig_line, use_container_width=True) # Display the plot
+            st.pyplot(fig_line, use_container_width=True)
 
             st.markdown("---", unsafe_allow_html=True)
 
@@ -352,7 +350,6 @@ elif selected_page == "Dashboard":
             st.markdown("---", unsafe_allow_html=True)
             stats_for_pdf = {'max': overall_max_val, 'mean': overall_mean_val, 'min': overall_min_val}
             try:
-                # Ensure fig_line is available and not None
                 if 'fig_line' in locals() and fig_line is not None:
                     pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
                     st.download_button(
@@ -360,14 +357,13 @@ elif selected_page == "Dashboard":
                         data=pdf_bytes,
                         file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
                         mime="application/pdf",
-                        key='download_pdf_dashboard' # Added key
+                        key='download_pdf_dashboard'
                     )
                 else:
                     st.error("Plot figure not available for PDF generation.")
             except Exception as pdf_e:
                 st.error(f"Failed to generate PDF: {pdf_e}")
             finally:
-                 # Close the figure to free memory, only if it was created
                  if 'fig_line' in locals() and fig_line is not None:
                     plt.close(fig_line)
 
@@ -412,7 +408,7 @@ elif selected_page == "Correlation":
                 ax_corr.set_title("Correlation Matrix Heatmap", fontsize=14)
                 plt.xticks(rotation=45, ha='right', fontsize=10); plt.yticks(rotation=0, fontsize=10)
                 plt.tight_layout(pad=2.0); st.pyplot(fig_corr)
-                plt.close(fig_corr) # Close figure
+                plt.close(fig_corr)
             elif len(corr_vars_cols) <= 1: st.warning("Need >= 2 valid columns for correlation.")
         else: st.info("Please select at least 2 parameters.")
     else: st.warning("Not enough parameters available for correlation.")
@@ -445,117 +441,176 @@ elif selected_page == "Temporal":
                          ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
                     ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '), fontsize=12); ax_temporal.set_xlabel("Date", fontsize=12)
                     ax_temporal.legend(loc='best'); plt.tight_layout(); st.pyplot(fig_temporal, use_container_width=True)
-                    plt.close(fig_temporal) # Close figure
+                    plt.close(fig_temporal)
                 else: st.warning(f"Missing required columns for '{temporal_group_key}'.")
         else: st.warning("Please select a parameter group.")
     else: st.warning("No parameter groups available.")
 
 # --- Page 5: Statistics ---
 elif selected_page == "Statistics":
-    st.title("📉 Statistical Hypothesis Testing")
-    test_type = st.selectbox("Select Analysis Type", ["T-Test", "ANOVA", "Regression"], key="stats_test_type_select_main")
+    st.title("📉 Statistical Analysis") # Updated title
+
+    # **MODIFICATION:** Updated analysis types
+    analysis_options = ["Descriptive Statistics", "T-Test (Compare 2 Groups)", "ANOVA (Compare 2+ Groups)", "Correlation (Pearson's r)"]
+    test_type = st.selectbox(
+        "Select Analysis Type",
+        analysis_options,
+        key="stats_test_type_select_main"
+    )
     st.markdown("---", unsafe_allow_html=True)
 
-    if "T-Test" in test_type:
-        st.subheader("Independent Samples T-Test")
-        col1, col2 = st.columns(2)
-        with col1:
-            numeric_vars_ttest = df.select_dtypes(include=np.number).columns.tolist()
-            t_test_variable = st.selectbox("Variable (Numeric)", numeric_vars_ttest, key="ttest_variable_select_main") if numeric_vars_ttest else None
-            if not t_test_variable: st.warning("No numeric variables found.")
-        with col2:
-            potential_group_vars = [c for c in df.columns if df[c].dropna().nunique() == 2]
-            t_test_group_var = st.selectbox("Grouping Variable (2 Groups)", potential_group_vars, key="ttest_group_select_main") if potential_group_vars else None
-            if not t_test_group_var: st.warning("No suitable grouping variables found.")
+    numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
+    if not numeric_columns:
+        st.warning("No numeric columns found in the dataset to perform statistical analysis.")
+    else:
+        # --- Descriptive Statistics Section ---
+        if test_type == "Descriptive Statistics":
+            st.subheader("Descriptive Statistics")
+            
+            desc_var = st.selectbox(
+                "Select Variable for Descriptive Statistics",
+                numeric_columns,
+                key="desc_stats_var_select"
+            )
+            # Optional: Grouping variable
+            # For simplicity, let's list columns with a reasonable number of unique values as potential groupers
+            potential_groupers = [col for col in df.columns if df[col].nunique() < 20 and col != desc_var] # Avoid too many groups
+            potential_groupers.insert(0, "None (Overall Statistics)") # Add option for no grouping
 
-        if t_test_variable and t_test_group_var:
-             if st.button("Run T-Test", key="ttest_run_button_main"):
-                result, error_msg = run_ttest(df, t_test_variable, t_test_group_var)
-                if error_msg: st.error(f"T-Test Error: {error_msg}")
-                elif result:
-                    t_stat, p_value = result; st.markdown("##### Results")
-                    res_col1, res_col2 = st.columns(2)
-                    with res_col1: st.metric("T-Statistic", f"{t_stat:.3f}")
-                    with res_col2: st.metric("P-Value", f"{p_value:.4g}")
-                    alpha = 0.05
-                    if p_value < alpha: st.success(f"Significant difference (p < {alpha}).")
-                    else: st.info(f"No significant difference (p >= {alpha}).")
-                else: st.error("T-Test failed.")
-        else: st.info("Select a numeric variable and a grouping variable.")
+            desc_group_var = st.selectbox(
+                "Select Grouping Variable (Optional)",
+                potential_groupers,
+                key="desc_stats_group_select"
+            )
 
-    elif "ANOVA" in test_type:
-        st.subheader("One-Way ANOVA")
-        col1, col2 = st.columns(2)
-        with col1:
-            numeric_vars_anova = df.select_dtypes(include=np.number).columns.tolist()
-            anova_variable = st.selectbox("Variable (Numeric)", numeric_vars_anova, key="anova_variable_select_main") if numeric_vars_anova else None
-            if not anova_variable: st.warning("No numeric variables found.")
-        with col2:
-            potential_anova_groups = [c for c in df.columns if c != anova_variable and df[c].dropna().nunique() > 1]
-            anova_group_var = st.selectbox("Grouping Variable (2+ Groups)", potential_anova_groups, key="anova_group_select_main") if potential_anova_groups else None
-            if not anova_group_var: st.warning("No suitable grouping variables found.")
-
-        if anova_variable and anova_group_var:
-            if st.button("Run ANOVA", key="anova_run_button_main"):
-                anova_results, error_msg = run_anova(df, anova_variable, anova_group_var)
-                if error_msg: st.error(f"ANOVA Error: {error_msg}")
-                elif anova_results is not None and not anova_results.empty:
-                    st.markdown("##### ANOVA Results Table")
-                    st.dataframe(anova_results.style.format({'PR(>F)': '{:.4g}'}))
-                    if 'PR(>F)' in anova_results.columns and not anova_results['PR(>F)'].empty:
-                        p_value_anova = anova_results['PR(>F)'].iloc[0]; alpha = 0.05
-                        if p_value_anova < alpha:
-                            st.success(f"Significant difference across groups (p < {alpha}).")
-                            if df[anova_group_var].dropna().nunique() > 2: st.info("Consider post-hoc tests.")
-                        else: st.info(f"No significant difference across groups (p >= {alpha}).")
-                    else: st.warning("Could not extract p-value.")
-                else: st.error("ANOVA failed or produced empty results.")
-        else: st.info("Select a numeric variable and a grouping variable.")
-
-    elif "Regression" in test_type:
-        st.subheader("Simple Linear Regression")
-        col1, col2 = st.columns(2)
-        numeric_cols_list = df.select_dtypes(include=np.number).columns.tolist()
-        if len(numeric_cols_list) < 2: st.warning("Regression requires >= 2 numeric variables.")
-        else:
-            with col1: reg_x_variable = st.selectbox("Independent Variable (X)", numeric_cols_list, key="regression_x_select_main", index = 0)
-            with col2:
-                available_y = [c for c in numeric_cols_list if c != reg_x_variable]
-                reg_y_variable = st.selectbox("Dependent Variable (Y)", available_y, key="regression_y_select_main", index = 0 if available_y else -1) if available_y else None
-                if not reg_y_variable: st.warning("Error selecting dependent variable.")
-
-            if reg_x_variable and reg_y_variable:
-                 if st.button("Run Regression", key="regression_run_button_main"):
-                    model_fit, error_msg = run_regression(df, reg_x_variable, reg_y_variable)
-                    if error_msg: st.error(f"Regression Error: {error_msg}")
-                    elif model_fit:
-                        st.markdown(f"##### Summary: {reg_y_variable} ~ {reg_x_variable}")
-                        res_col1, res_col2, res_col3 = st.columns(3)
-                        with res_col1: st.metric("R-squared (R²)", f"{model_fit.rsquared:.3f}")
-                        if reg_x_variable in model_fit.params:
-                             with res_col2: st.metric(f"Coefficient ({reg_x_variable})", f"{model_fit.params[reg_x_variable]:.3f}")
-                        if reg_x_variable in model_fit.pvalues:
-                             with res_col3: st.metric(f"P-value ({reg_x_variable})", f"{model_fit.pvalues[reg_x_variable]:.4g}")
-                        if 'const' in model_fit.params: st.write(f"**Intercept:** {model_fit.params['const']:.3f}")
-                        alpha = 0.05
-                        if reg_x_variable in model_fit.pvalues:
-                            p_val_coeff = model_fit.pvalues[reg_x_variable]
-                            if p_val_coeff < alpha: st.success(f"Significant relationship (p < {alpha}).")
-                            else: st.info(f"No significant relationship (p >= {alpha}).")
-                        else: st.warning("Could not determine significance.")
-                        st.markdown("---", unsafe_allow_html=True)
-                        st.markdown("##### Regression Plot")
+            if desc_var:
+                if st.button("Calculate Descriptive Statistics", key="desc_stats_run_button"):
+                    if desc_group_var != "None (Overall Statistics)":
+                        if desc_group_var in df.columns:
+                            try:
+                                desc_table = df.groupby(desc_group_var)[desc_var].describe()
+                                st.write(f"Descriptive statistics for '{desc_var}' grouped by '{desc_group_var}':")
+                                st.dataframe(desc_table.style.format("{:.2f}"))
+                            except Exception as e:
+                                st.error(f"Error calculating grouped descriptive statistics: {e}")
+                        else:
+                            st.error(f"Grouping variable '{desc_group_var}' not found.")
+                    else:
                         try:
-                            # Create figure object explicitly to close later
-                            fig_reg, ax_reg = plt.subplots(figsize=(8, 5))
-                            sns.regplot(x=reg_x_variable, y=reg_y_variable, data=df, ax=ax_reg, line_kws={'color': 'red', 'linestyle': '--', 'linewidth': 2}, scatter_kws={'alpha': 0.5, 's': 50})
-                            ax_reg.set_title(f"Regression: {reg_y_variable} vs {reg_x_variable}", fontsize=14)
-                            ax_reg.set_xlabel(reg_x_variable.replace('_',' ').title(), fontsize=12); ax_reg.set_ylabel(reg_y_variable.replace('_',' ').title(), fontsize=12)
-                            plt.tight_layout(); st.pyplot(fig_reg, use_container_width=True)
-                            plt.close(fig_reg) # Close figure
-                        except Exception as plot_e: st.warning(f"Could not generate plot: {plot_e}")
-                    else: st.error("Regression failed.")
-            else: st.info("Select both independent (X) and dependent (Y) variables.")
+                            desc_table = df[desc_var].describe()
+                            st.write(f"Overall descriptive statistics for '{desc_var}':")
+                            st.dataframe(desc_table.to_frame().style.format("{:.2f}"))
+                        except Exception as e:
+                            st.error(f"Error calculating overall descriptive statistics: {e}")
+            else:
+                st.info("Please select a variable.")
+
+
+        # --- T-Test Section ---
+        elif test_type == "T-Test (Compare 2 Groups)":
+            st.subheader("Independent Samples T-Test")
+            col1, col2 = st.columns(2)
+            with col1:
+                t_test_variable = st.selectbox("Variable (Numeric)", numeric_columns, key="ttest_variable_select_main")
+            with col2:
+                potential_group_vars = [c for c in df.columns if df[c].dropna().nunique() == 2]
+                t_test_group_var = st.selectbox("Grouping Variable (2 Groups)", potential_group_vars, key="ttest_group_select_main") if potential_group_vars else None
+                if not t_test_group_var: st.warning("No suitable grouping variables found.")
+
+            if t_test_variable and t_test_group_var:
+                 if st.button("Run T-Test", key="ttest_run_button_main"):
+                    result, error_msg = run_ttest(df, t_test_variable, t_test_group_var)
+                    if error_msg: st.error(f"T-Test Error: {error_msg}")
+                    elif result:
+                        t_stat, p_value = result; st.markdown("##### Results")
+                        res_col1, res_col2 = st.columns(2)
+                        with res_col1: st.metric("T-Statistic", f"{t_stat:.3f}")
+                        with res_col2: st.metric("P-Value", f"{p_value:.4g}")
+                        alpha = 0.05
+                        if p_value < alpha: st.success(f"Significant difference (p < {alpha}).")
+                        else: st.info(f"No significant difference (p >= {alpha}).")
+                    else: st.error("T-Test failed.")
+            else: st.info("Select a numeric variable and a grouping variable.")
+
+        # --- ANOVA Section ---
+        elif test_type == "ANOVA (Compare 2+ Groups)":
+            st.subheader("One-Way ANOVA")
+            col1, col2 = st.columns(2)
+            with col1:
+                anova_variable = st.selectbox("Variable (Numeric)", numeric_columns, key="anova_variable_select_main")
+            with col2:
+                potential_anova_groups = [c for c in df.columns if c != anova_variable and df[c].dropna().nunique() > 1]
+                anova_group_var = st.selectbox("Grouping Variable (2+ Groups)", potential_anova_groups, key="anova_group_select_main") if potential_anova_groups else None
+                if not anova_group_var: st.warning("No suitable grouping variables found.")
+
+            if anova_variable and anova_group_var:
+                if st.button("Run ANOVA", key="anova_run_button_main"):
+                    anova_results, error_msg = run_anova(df, anova_variable, anova_group_var)
+                    if error_msg: st.error(f"ANOVA Error: {error_msg}")
+                    elif anova_results is not None and not anova_results.empty:
+                        st.markdown("##### ANOVA Results Table")
+                        st.dataframe(anova_results.style.format({'PR(>F)': '{:.4g}'}))
+                        if 'PR(>F)' in anova_results.columns and not anova_results['PR(>F)'].empty:
+                            p_value_anova = anova_results['PR(>F)'].iloc[0]; alpha = 0.05
+                            if p_value_anova < alpha:
+                                st.success(f"Significant difference across groups (p < {alpha}).")
+                                if df[anova_group_var].dropna().nunique() > 2: st.info("Consider post-hoc tests.")
+                            else: st.info(f"No significant difference across groups (p >= {alpha}).")
+                        else: st.warning("Could not extract p-value.")
+                    else: st.error("ANOVA failed or produced empty results.")
+            else: st.info("Select a numeric variable and a grouping variable.")
+
+        # --- Correlation (Pearson's r) Section ---
+        elif test_type == "Correlation (Pearson's r)":
+            st.subheader("Pearson Correlation Coefficient")
+            col1, col2 = st.columns(2)
+            with col1:
+                corr_var1 = st.selectbox("Select First Variable (Numeric)", numeric_columns, key="corr_var1_select")
+            with col2:
+                # Ensure the second variable is different from the first
+                available_vars2 = [v for v in numeric_columns if v != corr_var1]
+                if available_vars2:
+                    corr_var2 = st.selectbox("Select Second Variable (Numeric)", available_vars2, key="corr_var2_select")
+                else:
+                    st.warning("Need at least two numeric variables for correlation.")
+                    corr_var2 = None
+            
+            if corr_var1 and corr_var2:
+                if st.button("Calculate Correlation", key="corr_run_button"):
+                    result, error_msg = run_pearson_correlation(df, corr_var1, corr_var2)
+                    if error_msg:
+                        st.error(f"Correlation Error: {error_msg}")
+                    elif result:
+                        corr_coef, p_value = result
+                        st.markdown("##### Results")
+                        res_col1, res_col2 = st.columns(2)
+                        with res_col1:
+                            st.metric("Pearson Correlation (r)", f"{corr_coef:.3f}")
+                        with res_col2:
+                            st.metric("P-value", f"{p_value:.4g}")
+                        
+                        alpha = 0.05
+                        if p_value < alpha:
+                            st.success(f"The correlation is statistically significant (p < {alpha}).")
+                        else:
+                            st.info(f"The correlation is not statistically significant (p >= {alpha}).")
+                        
+                        # Interpretation of correlation coefficient
+                        if abs(corr_coef) >= 0.7: strength = "strong"
+                        elif abs(corr_coef) >= 0.4: strength = "moderate"
+                        elif abs(corr_coef) >= 0.1: strength = "weak"
+                        else: strength = "very weak or no"
+                        direction = "positive" if corr_coef > 0 else "negative" if corr_coef < 0 else ""
+                        if direction:
+                             st.write(f"Interpretation: There is a {strength} {direction} linear relationship between '{corr_var1}' and '{corr_var2}'.")
+                        else:
+                             st.write(f"Interpretation: There is a {strength} linear relationship between '{corr_var1}' and '{corr_var2}'.")
+
+                    else:
+                        st.error("Correlation calculation failed.")
+            else:
+                st.info("Please select two different numeric variables.")
+
 
 # --- Footer ---
 if selected_page:
