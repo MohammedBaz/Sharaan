@@ -233,7 +233,7 @@ if selected_page == "Green Cover":
             with open(VIDEO_PATH, 'rb') as video_file:
                 video_bytes = video_file.read()
             st.video(video_bytes, format="video/mp4", start_time=0, **VIDEO_CONFIG)
-            st.caption("Animation illustrating fluctuations in vegetation indices.")
+            #st.caption("Animation illustrating fluctuations in vegetation indices.")
         except FileNotFoundError: st.error(f"Error: Video file not found at '{VIDEO_PATH}'.")
         except Exception as e: st.error(f"Error loading video: {str(e)}")
 
@@ -484,5 +484,5 @@ elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Update
 # --- Footer ---
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
-    st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
+    #st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
 
