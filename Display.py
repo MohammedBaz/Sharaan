@@ -217,7 +217,8 @@ if not param_groups:
 
 # --- Sidebar Navigation ---
 st.sidebar.title("EcoMonitor Navigation")
-pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics", "🔮 Prediction"]
+# **MODIFICATION:** Changed "🔮 Prediction" to "📈 Linear Regression Trend"
+pages = ["Green Cover", "Dashboard", "Correlation", "Temporal", "Statistics", "📈 Linear Regression Trend"]
 selected_page = st.sidebar.radio("Go to", pages)
 
 
@@ -400,93 +401,84 @@ elif selected_page == "Statistics":
             if col_idx == 0 and i < len(numeric_columns) -1 :
                  st.markdown("---", unsafe_allow_html=True)
 
-# --- Page 6: Prediction ---
-elif selected_page == "🔮 Prediction":
-    st.title("🔮 Simple Time Series Prediction")
+# --- Page 6: Linear Regression Trend ---
+elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Updated page name
+    st.title("📈 Linear Regression Trend Analysis") # **MODIFICATION:** Updated title
     st.markdown("""
-    This section provides a basic forecast using linear regression. 
-    It fits a line to the historical data based on time and extends this line into the future.
-    **Note:** This is a very simple model. Its accuracy is limited, especially if the data has complex patterns (like seasonality) or no clear linear trend. Interpret with caution.
+    This section fits a linear regression model to the historical data of a selected parameter 
+    to visualize the overall trend based on time.
+    **Note:** This model assumes a linear relationship over time. 
+    The 'goodness of fit' (e.g., R-squared) is not explicitly calculated here but can be inferred visually.
     """)
     st.markdown("---", unsafe_allow_html=True)
 
-    # **MODIFICATION:** Set a fixed prediction horizon
-    FIXED_DAYS_TO_PREDICT = 30 
-
     if param_groups:
-        pred_param_group_key = st.selectbox(
-            "Select Parameter Group to Predict",
+        # Let user select the parameter group, and we'll use its 'Mean' value
+        trend_param_group_key = st.selectbox(
+            "Select Parameter Group for Trend Analysis",
             sorted(param_groups.keys()),
-            key="prediction_param_group_select"
+            key="trend_param_group_select" # New key
         )
         
-        if pred_param_group_key and 'Mean' in param_groups[pred_param_group_key]:
-            target_variable = param_groups[pred_param_group_key]['Mean']
+        if trend_param_group_key and 'Mean' in param_groups[trend_param_group_key]:
+            target_variable = param_groups[trend_param_group_key]['Mean']
 
-            # **REMOVED:** days_to_predict number input
-
-            if st.button("Generate Prediction Plot", key="prediction_run_button"): # Changed button label
+            if st.button("Show Linear Trend", key="trend_run_button"): # Changed button label
                 if target_variable not in df.columns:
                     st.error(f"Target variable '{target_variable}' not found in the dataset.")
                 else:
                     try:
-                        predict_df = df[['Date', target_variable]].copy().dropna()
-                        if len(predict_df) < 2:
-                             st.error(f"Not enough data points for '{target_variable}' to make a prediction.")
+                        trend_df = df[['Date', target_variable]].copy().dropna()
+                        if len(trend_df) < 2:
+                             st.error(f"Not enough data points for '{target_variable}' to fit a trend line.")
                         else:
-                            predict_df['Time_Step'] = (predict_df['Date'] - predict_df['Date'].min()).dt.days
+                            # Create a numerical time feature (days since first date)
+                            trend_df['Time_Step'] = (trend_df['Date'] - trend_df['Date'].min()).dt.days
                             
-                            X_train = predict_df[['Time_Step']]
-                            y_train = predict_df[target_variable]
+                            X_train = trend_df[['Time_Step']]
+                            y_train = trend_df[target_variable]
 
+                            # Fit Linear Regression model
                             model = LinearRegression()
                             model.fit(X_train, y_train)
                             
-                            last_time_step = predict_df['Time_Step'].max()
-                            last_date = predict_df['Date'].max()
+                            # Get model parameters
+                            slope = model.coef_[0]
+                            intercept = model.intercept_
                             
-                            # Use FIXED_DAYS_TO_PREDICT
-                            future_time_steps = np.array([last_time_step + i + 1 for i in range(FIXED_DAYS_TO_PREDICT)]).reshape(-1, 1)
-                            future_dates = [last_date + pd.Timedelta(days=i+1) for i in range(FIXED_DAYS_TO_PREDICT)]
+                            st.subheader("Linear Regression Model Parameters")
+                            param_col1, param_col2 = st.columns(2)
+                            with param_col1:
+                                st.metric(label="Slope (Trend per Day)", value=f"{slope:.4f}")
+                            with param_col2:
+                                st.metric(label="Intercept", value=f"{intercept:.2f}")
                             
-                            future_predictions = model.predict(future_time_steps)
+                            st.markdown("---", unsafe_allow_html=True)
+                            st.subheader("Data with Fitted Linear Trend")
+                            fig_trend, ax_trend = plt.subplots(figsize=(12, 6))
                             
-                            predictions_df = pd.DataFrame({
-                                'Date': future_dates,
-                                f'Predicted_{target_variable}': future_predictions # More specific column name
-                            })
-
-                            st.subheader("Prediction Plot")
-                            fig_pred, ax_pred = plt.subplots(figsize=(12, 6))
+                            # Historical data
+                            sns.lineplot(x='Date', y=target_variable, data=trend_df, ax=ax_trend, label='Historical Data', linestyle='-', linewidth=1.5, color='blue')
                             
-                            sns.lineplot(x='Date', y=target_variable, data=predict_df, ax=ax_pred, label='Historical Data', linestyle='-', linewidth=1.5, color='blue')
-                            
+                            # Regression line on historical data
                             historical_fit = model.predict(X_train)
-                            ax_pred.plot(predict_df['Date'], historical_fit, color='red', linestyle='--', label='Fitted Regression Line')
-
-                            # Plot forecasted data
-                            ax_pred.plot(predictions_df['Date'], predictions_df[f'Predicted_{target_variable}'], color='green', linestyle='-', linewidth=2, label=f'Forecast ({FIXED_DAYS_TO_PREDICT} days)')
+                            ax_trend.plot(trend_df['Date'], historical_fit, color='red', linestyle='--', label='Fitted Regression Line', linewidth=2)
                             
-                            ax_pred.set_title(f"Linear Trend & Forecast for {target_variable.replace('_', ' ').title()}", fontsize=14)
-                            ax_pred.set_xlabel("Date", fontsize=12)
-                            ax_pred.set_ylabel(target_variable.replace('_', ' ').title(), fontsize=12)
-                            ax_pred.legend()
+                            ax_trend.set_title(f"Linear Trend for {target_variable.replace('_', ' ').title()}", fontsize=14)
+                            ax_trend.set_xlabel("Date", fontsize=12)
+                            ax_trend.set_ylabel(target_variable.replace('_', ' ').title(), fontsize=12)
+                            ax_trend.legend()
                             plt.xticks(rotation=30, ha='right')
                             plt.tight_layout()
-                            st.pyplot(fig_pred)
-                            plt.close(fig_pred)
-
-                            # Optionally, display the predicted values in a table
-                            st.subheader(f"Forecasted Values for the Next {FIXED_DAYS_TO_PREDICT} Days")
-                            st.dataframe(predictions_df[['Date', f'Predicted_{target_variable}']].style.format({f'Predicted_{target_variable}': "{:.2f}", 'Date': '{:%Y-%m-%d}'}))
-
+                            st.pyplot(fig_trend)
+                            plt.close(fig_trend)
 
                     except Exception as e:
-                        st.error(f"An error occurred during prediction: {e}")
+                        st.error(f"An error occurred during trend analysis: {e}")
         else:
             st.warning("Selected parameter group does not have a 'Mean' column or is invalid.")
     else:
-        st.warning("No parameter groups available for prediction.")
+        st.warning("No parameter groups available for trend analysis.")
 
 
 # --- Footer ---
