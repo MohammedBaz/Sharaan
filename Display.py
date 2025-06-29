@@ -10,7 +10,7 @@ import statsmodels.api as sm # For OLS regression
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import io # Needed for saving plot to memory
-from fpdf import FPDF # Import FPDF for PDF generation
+# REMOVED: from fpdf import FPDF # Import FPDF for PDF generation
 from sklearn.linear_model import LinearRegression # Alternative for simple regression
 
 # --- App Setup ---
@@ -46,27 +46,27 @@ st.markdown("""
             background-color: #eaf2f8;
             padding: 1rem;
         }
-         [data-testid="stSidebar"] h1 {
+        [data-testid="stSidebar"] h1 {
             color: #1a5276;
             font-size: 1.8em;
             margin-bottom: 1rem;
-         }
-         [data-testid="stSidebar"] .stRadio > label {
-             padding-bottom: 10px;
-             font-weight: 500;
-         }
-         [data-testid="stSidebar"] .stRadio > div > div {
-             padding: 10px 0px;
-             font-size: 1.05em;
-         }
-         /* Add margin below download button */
-         [data-testid="stSidebar"] .stDownloadButton {
-             margin-top: 1rem; /* Adjusted margin */
-         }
-         [data-testid="stSidebar"] .stDownloadButton button {
-             width: 100%; /* Make button full width */
-             margin-bottom: 0.5rem; /* Space between buttons */
-         }
+        }
+        [data-testid="stSidebar"] .stRadio > label {
+            padding-bottom: 10px;
+            font-weight: 500;
+        }
+        [data-testid="stSidebar"] .stRadio > div > div {
+            padding: 10px 0px;
+            font-size: 1.05em;
+        }
+        /* Add margin below download button */
+        [data-testid="stSidebar"] .stDownloadButton {
+            margin-top: 1rem; /* Adjusted margin */
+        }
+        [data-testid="stSidebar"] .stDownloadButton button {
+            width: 100%; /* Make button full width */
+            margin-bottom: 0.5rem; /* Space between buttons */
+        }
 
 
         /* Style the video player */
@@ -84,7 +84,7 @@ st.markdown("""
             font-size: 0.95em; color: #555; font-weight: 500;
         }
         [data-testid="stMetricValue"] {
-             font-size: 2.2em; color: #1a5276; font-weight: 700;
+            font-size: 2.2em; color: #1a5276; font-weight: 700;
         }
 
         /* Style the main titles in the main area */
@@ -94,12 +94,12 @@ st.markdown("""
 
         /* Ensure plots have some breathing room */
         .stpyplot { /* Target only matplotlib plots */
-             margin-bottom: 1.5rem;
-             background-color: #ffffff;
-             border-radius: 8px;
-             padding: 10px;
-             box-shadow: 0 1px 3px rgba(0,0,0,0.04);
-             border: 1px solid #e0e0e0;
+            margin-bottom: 1.5rem;
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            border: 1px solid #e0e0e0;
         }
 
         /* Style selectbox and date input */
@@ -141,7 +141,7 @@ def load_geojson():
         geojson = response.json()
         gdf = gpd.GeoDataFrame.from_features(geojson['features'])
         if not gdf.geometry.is_valid.all():
-             gdf.geometry = gdf.geometry.buffer(0)
+            gdf.geometry = gdf.geometry.buffer(0)
         return geojson, gdf.geometry.unary_union
     except Exception as e:
         st.error(f"Error: GeoJSON loading failed: {str(e)}")
@@ -171,40 +171,40 @@ def normalize_value(value, overall_min, overall_max):
     normalized = (np.clip(value, overall_min, overall_max) - overall_min) / (overall_max - overall_min)
     return normalized
 
-# --- PDF Generation Function ---
-def create_dashboard_pdf(param_name, fig, stats_dict):
-    """Generates a PDF report for the dashboard."""
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, f"EcoMonitor Dashboard Report: {param_name.replace('_', ' ').title()}", 0, 1, "C")
-    pdf.ln(10)
+# --- REMOVED: PDF Generation Function ---
+# def create_dashboard_pdf(param_name, fig, stats_dict):
+#     """Generates a PDF report for the dashboard."""
+#     pdf = FPDF()
+#     pdf.add_page()
+#     pdf.set_font("Helvetica", "B", 16)
+#     pdf.cell(0, 10, f"EcoMonitor Dashboard Report: {param_name.replace('_', ' ').title()}", 0, 1, "C")
+#     pdf.ln(10)
 
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 10, "Overall Statistics:", 0, 1)
-    pdf.set_font("Helvetica", "", 11)
-    max_stat = f"{stats_dict['max']:.2f}" if not pd.isna(stats_dict['max']) else "N/A"
-    mean_stat = f"{stats_dict['mean']:.2f}" if not pd.isna(stats_dict['mean']) else "N/A"
-    min_stat = f"{stats_dict['min']:.2f}" if not pd.isna(stats_dict['min']) else "N/A"
-    pdf.cell(0, 8, f"  - Maximum: {max_stat}", 0, 1)
-    pdf.cell(0, 8, f"  - Average: {mean_stat}", 0, 1)
-    pdf.cell(0, 8, f"  - Minimum: {min_stat}", 0, 1)
-    pdf.ln(10)
+#     pdf.set_font("Helvetica", "B", 12)
+#     pdf.cell(0, 10, "Overall Statistics:", 0, 1)
+#     pdf.set_font("Helvetica", "", 11)
+#     max_stat = f"{stats_dict['max']:.2f}" if not pd.isna(stats_dict['max']) else "N/A"
+#     mean_stat = f"{stats_dict['mean']:.2f}" if not pd.isna(stats_dict['mean']) else "N/A"
+#     min_stat = f"{stats_dict['min']:.2f}" if not pd.isna(stats_dict['min']) else "N/A"
+#     pdf.cell(0, 8, f"  - Maximum: {max_stat}", 0, 1)
+#     pdf.cell(0, 8, f"  - Average: {mean_stat}", 0, 1)
+#     pdf.cell(0, 8, f"  - Minimum: {min_stat}", 0, 1)
+#     pdf.ln(10)
 
-    pdf.set_font("Helvetica", "B", 12)
-    pdf.cell(0, 10, "Trend Over Time Plot:", 0, 1)
-    pdf.ln(5)
-    img_buffer = io.BytesIO()
-    fig.savefig(img_buffer, format='png', dpi=300, bbox_inches='tight')
-    img_buffer.seek(0)
-    page_width = pdf.w - 2 * pdf.l_margin
-    pdf.image(img_buffer, x=pdf.l_margin, w=page_width)
-    img_buffer.close()
+#     pdf.set_font("Helvetica", "B", 12)
+#     pdf.cell(0, 10, "Trend Over Time Plot:", 0, 1)
+#     pdf.ln(5)
+#     img_buffer = io.BytesIO()
+#     fig.savefig(img_buffer, format='png', dpi=300, bbox_inches='tight')
+#     img_buffer.seek(0)
+#     page_width = pdf.w - 2 * pdf.l_margin
+#     pdf.image(img_buffer, x=pdf.l_margin, w=page_width)
+#     img_buffer.close()
 
-    pdf_output = pdf.output(dest='S')
-    if isinstance(pdf_output, bytearray):
-        return bytes(pdf_output)
-    return pdf_output
+#     pdf_output = pdf.output(dest='S')
+#     if isinstance(pdf_output, bytearray):
+#         return bytes(pdf_output)
+#     return pdf_output
 
 
 # --- Load Data ---
@@ -286,21 +286,22 @@ elif selected_page == "Dashboard":
             with metric_cols[2]: st.metric(label="Overall Minimum", value=f"{overall_min_val:.2f}")
 
             st.markdown("---", unsafe_allow_html=True)
-            stats_for_pdf = {'max': overall_max_val, 'mean': overall_mean_val, 'min': overall_min_val}
-            try:
-                if 'fig_line' in locals() and fig_line is not None:
-                    pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
-                    st.download_button(
-                        label="📄 Download Dashboard as PDF",
-                        data=pdf_bytes,
-                        file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
-                        mime="application/pdf",
-                        key='download_pdf_dashboard'
-                    )
-                else: st.error("Plot figure not available for PDF generation.")
-            except Exception as pdf_e: st.error(f"Failed to generate PDF: {pdf_e}")
-            finally:
-                 if 'fig_line' in locals() and fig_line is not None: plt.close(fig_line)
+            # REMOVED PDF download button and logic
+            # stats_for_pdf = {'max': overall_max_val, 'mean': overall_mean_val, 'min': overall_min_val}
+            # try:
+            #     if 'fig_line' in locals() and fig_line is not None:
+            #         pdf_bytes = create_dashboard_pdf(selected_group_key_dashboard, fig_line, stats_for_pdf)
+            #         st.download_button(
+            #             label="📄 Download Dashboard as PDF",
+            #             data=pdf_bytes,
+            #             file_name=f"dashboard_{selected_group_key_dashboard}.pdf",
+            #             mime="application/pdf",
+            #             key='download_pdf_dashboard'
+            #         )
+            #     else: st.error("Plot figure not available for PDF generation.")
+            # except Exception as pdf_e: st.error(f"Failed to generate PDF: {pdf_e}")
+            # finally:
+            #     if 'fig_line' in locals() and fig_line is not None: plt.close(fig_line)
         else: st.warning("No data available for the selected parameter group.")
     else: st.warning("Please select a parameter group using the control above.")
 
@@ -319,8 +320,8 @@ elif selected_page == "Correlation":
                 if p_group not in param_groups: st.warning(f"Invalid group '{p_group}'."); valid_selection = False; continue
                 for stat_type in ['Max', 'Min', 'Mean']:
                     if stat_type in param_groups[p_group]:
-                         col_name = param_groups[p_group][stat_type]; corr_vars_cols.append(col_name)
-                         label_text = p_group.replace('_', ' ').title(); corr_labels.append(f"{label_text[:15]}\n({stat_type})")
+                        col_name = param_groups[p_group][stat_type]; corr_vars_cols.append(col_name)
+                        label_text = p_group.replace('_', ' ').title(); corr_labels.append(f"{label_text[:15]}\n({stat_type})")
                     else: st.warning(f"Missing '{stat_type}' for '{p_group}'."); valid_selection = False
             if corr_vars_cols and valid_selection and len(corr_vars_cols) > 1:
                 correlation_matrix = df[corr_vars_cols].corr()
@@ -358,7 +359,7 @@ elif selected_page == "Temporal":
                         if prefix in ['Max', 'Mean', 'Min']: sns.lineplot(x=ts_rolling_avg.index, y=ts_rolling_avg[col], label=f'{prefix} ({rolling_window_days}-day avg)', ax=ax_temporal, linewidth=1.5)
                     min_col = group_cols_info.get('Min'); max_col = group_cols_info.get('Max')
                     if min_col in ts_rolling_avg.columns and max_col in ts_rolling_avg.columns:
-                         ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
+                        ax_temporal.fill_between(ts_rolling_avg.index, ts_rolling_avg[min_col], ts_rolling_avg[max_col], alpha=0.15, color='gray', label='Min-Max Range')
                     ax_temporal.set_ylabel(temporal_group_key.replace('_', ' '), fontsize=12); ax_temporal.set_xlabel("Date", fontsize=12)
                     ax_temporal.legend(loc='best'); plt.tight_layout(); st.pyplot(fig_temporal, use_container_width=True); plt.close(fig_temporal)
                 else: st.warning(f"Missing required columns for '{temporal_group_key}'.")
@@ -374,7 +375,7 @@ elif selected_page == "Statistics":
     st.markdown("---", unsafe_allow_html=True)
 
     numeric_columns = df.select_dtypes(include=np.number).columns.tolist()
-    
+
     if not numeric_columns:
         st.warning("No numeric columns found in the dataset to generate box plots.")
     else:
@@ -396,10 +397,10 @@ elif selected_page == "Statistics":
                     plt.close(fig_box)
                 except Exception as e:
                     st.error(f"Error generating box plot for {col_name}: {e}")
-            
+
             col_idx = (col_idx + 1) % num_plot_cols
             if col_idx == 0 and i < len(numeric_columns) -1 :
-                 st.markdown("---", unsafe_allow_html=True)
+                st.markdown("---", unsafe_allow_html=True)
 
 # --- Page 6: Linear Regression Trend ---
 elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Updated page name
@@ -419,7 +420,7 @@ elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Update
             sorted(param_groups.keys()),
             key="trend_param_group_select" # New key
         )
-        
+
         if trend_param_group_key and 'Mean' in param_groups[trend_param_group_key]:
             target_variable = param_groups[trend_param_group_key]['Mean']
 
@@ -430,40 +431,40 @@ elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Update
                     try:
                         trend_df = df[['Date', target_variable]].copy().dropna()
                         if len(trend_df) < 2:
-                             st.error(f"Not enough data points for '{target_variable}' to fit a trend line.")
+                            st.error(f"Not enough data points for '{target_variable}' to fit a trend line.")
                         else:
                             # Create a numerical time feature (days since first date)
                             trend_df['Time_Step'] = (trend_df['Date'] - trend_df['Date'].min()).dt.days
-                            
+
                             X_train = trend_df[['Time_Step']]
                             y_train = trend_df[target_variable]
 
                             # Fit Linear Regression model
                             model = LinearRegression()
                             model.fit(X_train, y_train)
-                            
+
                             # Get model parameters
                             slope = model.coef_[0]
                             intercept = model.intercept_
-                            
+
                             st.subheader("Linear Regression Model Parameters")
                             param_col1, param_col2 = st.columns(2)
                             with param_col1:
                                 st.metric(label="Slope (Trend per Day)", value=f"{slope:.4f}")
                             with param_col2:
                                 st.metric(label="Intercept", value=f"{intercept:.2f}")
-                            
+
                             st.markdown("---", unsafe_allow_html=True)
                             st.subheader("Data with Fitted Linear Trend")
                             fig_trend, ax_trend = plt.subplots(figsize=(12, 6))
-                            
+
                             # Historical data
                             sns.lineplot(x='Date', y=target_variable, data=trend_df, ax=ax_trend, label='Historical Data', linestyle='-', linewidth=1.5, color='blue')
-                            
+
                             # Regression line on historical data
                             historical_fit = model.predict(X_train)
                             ax_trend.plot(trend_df['Date'], historical_fit, color='red', linestyle='--', label='Fitted Regression Line', linewidth=2)
-                            
+
                             ax_trend.set_title(f"Linear Trend for {target_variable.replace('_', ' ').title()}", fontsize=14)
                             ax_trend.set_xlabel("Date", fontsize=12)
                             ax_trend.set_ylabel(target_variable.replace('_', ' ').title(), fontsize=12)
@@ -485,4 +486,3 @@ elif selected_page == "📈 Linear Regression Trend": # **MODIFICATION:** Update
 if selected_page:
     st.markdown("---", unsafe_allow_html=True)
     #st.caption(f"EcoMonitor Dashboard | Data sourced from specified URLs | Last data point: {df['Date'].max().strftime('%Y-%m-%d')}")
-
