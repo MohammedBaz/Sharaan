@@ -13,4 +13,5 @@ requests
 statsmodels==0.14.0
 scipy==1.11.4
 plotly
-fpdf2
+fpdf
+
