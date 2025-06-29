@@ -10,6 +10,9 @@ seaborn
 numpy
 scikit-learn
 requests
-statsmodels
+# --- Critical for your error ---
+statsmodels==0.14.0
+scipy==1.11.4
+# ------------------------------
 plotly
 fpdf2
