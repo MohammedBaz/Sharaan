@@ -10,7 +10,7 @@ import statsmodels.api as sm # For OLS regression
 from statsmodels.formula.api import ols
 from statsmodels.stats.multicomp import pairwise_tukeyhsd
 import io # Needed for saving plot to memory
-from fpdf import FPDF # Import FPDF for PDF generation
+from fpdf2 import FPDF # Import FPDF for PDF generation
 from sklearn.linear_model import LinearRegression # Alternative for simple regression
 
 # --- App Setup ---
